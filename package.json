@@ -1,0 +1,23 @@
+{
+  "name": "social-media-scheduler-root",
+  "version": "1.0.0",
+  "description": "Root package.json for managing both backend and frontend",
+  "private": true,
+  "scripts": {
+    "install-all": "npm install && cd backend && npm install && cd ../social-media && npm install",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd social-media && npm run dev",
+    "build": "cd social-media && npm run build",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd social-media && npm run preview"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}
+

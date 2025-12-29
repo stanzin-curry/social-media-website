@@ -14,6 +14,7 @@ export default function FullCalendar({ onDayClick }) {
   }
   for (let day=1; day<= lastDay.getDate(); day++) {
     const dayPosts = scheduledPosts.filter(p => {
+      if (!p.scheduledDate) return false
       const pd = new Date(p.scheduledDate)
       return pd.getDate() === day && pd.getMonth() === currentMonth && pd.getFullYear() === currentYear
     })
@@ -32,7 +33,16 @@ export default function FullCalendar({ onDayClick }) {
           <div key={idx} className={`rounded-lg p-2 min-h-20 ${c.dim ? 'bg-gray-50 text-gray-400' : 'bg-white border-2 hover:border-green-500 cursor-pointer'} ${c.isToday ? 'border-green-500 bg-green-50' : 'border-gray-200'}`} onClick={()=>onDayClick?.(c.num)}>
             <p className={`text-xs font-semibold ${c.isToday ? 'text-green-700' : ''}`}>{c.num}</p>
             <div className="space-y-1 mt-2">
-              {c.posts?.map(p => <div key={p.id} className="text-xs truncate bg-gradient-to-r from-orange-400 to-pink-500 text-white px-2 py-1 rounded hidden sm:block"><i className="fab fa-instagram mr-1" />{p.scheduledTime}</div>)}
+              {c.posts?.map(p => {
+                const postId = p._id || p.id
+                const scheduledDate = p.scheduledDate ? new Date(p.scheduledDate) : null
+                const timeStr = scheduledDate ? scheduledDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
+                return (
+                  <div key={postId} className="text-xs truncate bg-gradient-to-r from-orange-400 to-pink-500 text-white px-2 py-1 rounded hidden sm:block">
+                    <i className="fab fa-instagram mr-1" />{timeStr}
+                  </div>
+                )
+              })}
             </div>
           </div>
         ))}

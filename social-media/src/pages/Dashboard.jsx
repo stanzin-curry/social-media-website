@@ -5,6 +5,7 @@ import MiniCalendar from '../components/MiniCalendar'
 export default function Dashboard(){
   const { scheduledPosts, publishedPosts, notifications, connectedAccounts } = useApp()
   const connectedCount = Object.values(connectedAccounts).filter(Boolean).length
+  const failedPosts = publishedPosts.filter(p => p.status === 'failed').length
 
   return (
     <div className="screen">
@@ -21,7 +22,7 @@ export default function Dashboard(){
         </div>
         <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-red-500">
           <h3 className="text-gray-600 text-xs font-medium">Failed Posts</h3>
-          <p className="text-2xl font-bold">0</p>
+          <p className="text-2xl font-bold">{failedPosts}</p>
           <p className="text-xs text-gray-500 mt-2">Needs attention</p>
         </div>
         <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-blue-500">
@@ -40,17 +41,20 @@ export default function Dashboard(){
               <i className="fas fa-inbox text-4xl mb-3" />
               <p className="text-sm">No recent activity</p>
             </div>
-          ) : publishedPosts.slice(0,3).map(p=>(
-            <div key={p.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg mb-3">
+          ) : publishedPosts.slice(0,3).map(p=>{
+            const postId = p._id || p.id
+            const analytics = p.analytics || {}
+            return (
+            <div key={postId} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg mb-3">
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
                 <i className="fab fa-instagram text-white" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold">{p.caption}</p>
-                <p className="text-xs text-gray-500 mt-1">{p.likes} likes • {p.comments} comments</p>
+                <p className="text-sm font-semibold">{p.caption?.substring(0, 50) || 'No caption'}...</p>
+                <p className="text-xs text-gray-500 mt-1">{analytics.likes || 0} likes • {analytics.comments || 0} comments</p>
               </div>
             </div>
-          ))}
+          )})}
         </div>
 
         <div className="bg-white rounded-xl shadow-md p-4">

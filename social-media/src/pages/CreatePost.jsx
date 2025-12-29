@@ -14,9 +14,11 @@ export default function CreatePost() {
 
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState(null);
+  const [mediaFile, setMediaFile] = useState(null);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
 
   // Upload Handler
   const handleMediaUpload = (e) => {
@@ -24,20 +26,27 @@ export default function CreatePost() {
     if (file) {
       const previewURL = URL.createObjectURL(file);
       setMedia(previewURL);
+      setMediaFile(file);
     }
   };
 
   // Schedule Handler
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (!date || !time) {
       alert("Please select date and time");
       return;
     }
 
+    if (!selectedPlatforms.length) {
+      alert("Please select at least one platform");
+      return;
+    }
+
+    setIsScheduling(true);
     try {
-      schedulePost({
+      await schedulePost({
         caption,
-        media,
+        media: mediaFile,
         date,
         time,
         platforms: selectedPlatforms,
@@ -45,11 +54,13 @@ export default function CreatePost() {
 
       setCaption("");
       setMedia(null);
+      setMediaFile(null);
       setDate("");
       setTime("");
-      alert("Post scheduled!");
     } catch (err) {
-      alert(err.message);
+      // Error notification is handled by AppContext
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -148,10 +159,11 @@ export default function CreatePost() {
           {/* Schedule Button */}
           <button
             onClick={handleSchedule}
-            className="w-full px-4 py-2 bg-green-500 text-white rounded-lg"
+            disabled={isScheduling}
+            className="w-full px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i className="fas fa-clock mr-2" />
-            Schedule Post
+            {isScheduling ? 'Scheduling...' : 'Schedule Post'}
           </button>
         </div>
       </div>
