@@ -1,10 +1,14 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
 import { AppProvider } from './context/AppContext'
+import ProtectedRoute from './components/ProtectedRoute'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import NotificationPanel from './components/NotificationPanel'
 
+import Login from './pages/Login'
+import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import CalendarPage from './pages/Calendar'
 import CreatePost from './pages/CreatePost'
@@ -13,7 +17,8 @@ import Accounts from './pages/Accounts'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 
-export default function App() {
+// Layout component for protected routes
+function ProtectedLayout({ children }) {
   return (
     <AppProvider>
       <div className="flex flex-col lg:flex-row min-h-screen bg-gray-50">
@@ -22,19 +27,104 @@ export default function App() {
           <Header />
           <NotificationPanel />
           <div className="p-4 lg:p-8">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/calendar" element={<CalendarPage />} />
-              <Route path="/create" element={<CreatePost />} />
-              <Route path="/activity" element={<Activity />} />
-              <Route path="/accounts" element={<Accounts />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
+            {children}
           </div>
         </main>
       </div>
     </AppProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        
+        {/* Protected routes */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Navigate to="/dashboard" replace />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Dashboard />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/calendar"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <CalendarPage />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <CreatePost />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/activity"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Activity />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/accounts"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Accounts />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Analytics />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <ProtectedLayout>
+                <Settings />
+              </ProtectedLayout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </AuthProvider>
   )
 }
