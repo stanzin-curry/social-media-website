@@ -93,12 +93,12 @@ export const publishToLinkedIn = async (accessToken, authorUrn, text, mediaUrl =
 };
 
 /**
- * Get LinkedIn user profile
+ * Get LinkedIn user profile using OpenID Connect
  */
 export const getLinkedInProfile = async (accessToken) => {
   try {
     const response = await axios.get(
-      'https://api.linkedin.com/v2/me',
+      'https://api.linkedin.com/v2/userinfo',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -106,7 +106,17 @@ export const getLinkedInProfile = async (accessToken) => {
       }
     );
 
-    return response.data;
+    // Map OIDC response to a consistent format
+    const profile = response.data;
+    return {
+      id: profile.sub,
+      name: profile.name,
+      email: profile.email,
+      picture: profile.picture,
+      // Keep original OIDC fields for compatibility
+      sub: profile.sub,
+      ...profile
+    };
   } catch (error) {
     throw new Error(`LinkedIn API error: ${error.response?.data?.message || error.message}`);
   }

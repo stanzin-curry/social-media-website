@@ -1,9 +1,19 @@
 import express from 'express';
-import { register, login } from '../controllers/auth.controller.js';
+import { 
+  register, 
+  login, 
+  linkedinAuth, 
+  linkedinCallback,
+  facebookAuth,
+  facebookCallback,
+  instagramAuth,
+  instagramCallback
+} from '../controllers/auth.controller.js';
 import { authenticate } from '../utils/middleware.js';
 
 const router = express.Router();
 
+// Authentication routes
 router.post('/register', register);
 router.post('/login', login);
 router.get('/me', authenticate, (req, res) => {
@@ -17,6 +27,18 @@ router.get('/me', authenticate, (req, res) => {
     }
   });
 });
+
+// OAuth routes - LinkedIn
+router.get('/linkedin', authenticate, linkedinAuth);
+router.get('/linkedin/callback', linkedinCallback);
+
+// OAuth routes - Facebook
+router.get('/facebook', authenticate, facebookAuth);
+router.get('/facebook/callback', facebookCallback);
+
+// OAuth routes - Instagram
+router.get('/instagram', authenticate, instagramAuth);
+router.get('/instagram/callback', instagramCallback);
 
 export default router;
 

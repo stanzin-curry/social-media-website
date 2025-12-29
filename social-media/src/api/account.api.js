@@ -35,5 +35,21 @@ export const accountAPI = {
     const response = await api.post(`/accounts/${id}/refresh`);
     return response.data;
   },
+
+  // Get OAuth URLs for connecting accounts
+  getLinkedInAuthUrl: async () => {
+    const response = await api.get('/auth/linkedin');
+    return response.data;
+  },
+
+  getFacebookAuthUrl: async () => {
+    const response = await api.get('/auth/facebook');
+    return response.data;
+  },
+
+  getInstagramAuthUrl: async () => {
+    const response = await api.get('/auth/instagram');
+    return response.data;
+  },
 };
 
