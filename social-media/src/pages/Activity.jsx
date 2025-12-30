@@ -3,7 +3,11 @@ import { useApp } from '../context/AppContext'
 
 export default function Activity(){
   const { publishedPosts, scheduledPosts } = useApp()
-  const allPosts = [...publishedPosts, ...scheduledPosts].sort((a,b)=> new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt))
+  const allPosts = [...publishedPosts, ...scheduledPosts].sort((a,b)=> {
+    const dateA = new Date(b.publishedAt || b.scheduledDate || b.createdAt || 0)
+    const dateB = new Date(a.publishedAt || a.scheduledDate || a.createdAt || 0)
+    return dateA - dateB
+  })
 
   return (
     <div>
@@ -24,29 +28,50 @@ export default function Activity(){
               <i className="fas fa-history text-4xl mb-3" />
               <p className="text-sm">No activity yet</p>
             </div>
-          ) : allPosts.map(p=>(
-            <div key={p.id} className="flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md">
+          ) : allPosts.map(p=>{
+            const postId = p._id || p.id
+            const scheduledDate = p.scheduledDate ? new Date(p.scheduledDate) : null
+            const publishedDate = p.publishedAt ? new Date(p.publishedAt) : null
+            const analytics = p.analytics || {}
+            
+            return (
+            <div key={postId} className="flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md">
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
                 <i className="fab fa-instagram text-white text-xl" />
               </div>
               <div className="flex-1">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-semibold">{p.caption.substring(0,60)}</p>
-                    <p className="text-xs text-gray-500">{p.status === 'published' ? `Published ${new Date(p.publishedAt).toLocaleString()}` : `Scheduled for ${p.scheduledDate} ${p.scheduledTime}`}</p>
+                    <p className="text-sm font-semibold">{p.caption?.substring(0,60) || 'No caption'}</p>
+                    <p className="text-xs text-gray-500">
+                      {p.status === 'published' && publishedDate 
+                        ? `Published ${publishedDate.toLocaleString()}` 
+                        : scheduledDate 
+                        ? `Scheduled for ${scheduledDate.toLocaleString()}`
+                        : 'No date'}
+                    </p>
                   </div>
-                  <span className={`px-3 py-1 ${p.status === 'published' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'} text-xs rounded-full`}>{p.status}</span>
+                  <span className={`px-3 py-1 ${p.status === 'published' ? 'bg-green-100 text-green-600' : p.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'} text-xs rounded-full`}>{p.status}</span>
                 </div>
                 {p.status === 'published' && (
                   <div className="flex items-center gap-4 text-xs text-gray-600 mt-2">
-                    <span><i className="fas fa-eye text-blue-400" /> {p.reach?.toLocaleString()} reach</span>
-                    <span><i className="fas fa-heart text-red-400" /> {p.likes}</span>
-                    <span><i className="fas fa-comment text-blue-400" /> {p.comments}</span>
+                    <span><i className="fas fa-eye text-blue-400" /> {analytics.reach?.toLocaleString() || 0} reach</span>
+                    <span><i className="fas fa-heart text-red-400" /> {analytics.likes || 0}</span>
+                    <span><i className="fas fa-comment text-blue-400" /> {analytics.comments || 0}</span>
+                  </div>
+                )}
+                {p.platforms && (
+                  <div className="flex items-center gap-2 mt-2">
+                    {p.platforms.map(platform => (
+                      <span key={platform} className="text-xs px-2 py-1 bg-gray-100 rounded">
+                        {platform}
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
     </div>

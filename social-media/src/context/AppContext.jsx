@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { accountAPI } from '../api/account.api.js'
+import { postAPI } from '../api/post.api.js'
 
 const AppContext = createContext()
 
@@ -8,20 +10,15 @@ export function useApp() {
 
 export function AppProvider({ children }) {
   const [connectedAccounts, setConnectedAccounts] = useState({
-    // instagram: false,
-    // facebook: false,
-    // linkedin: false,
-    // this below section is the corrected code from gpt
-    instagram: true,
-facebook: true,
-linkedin: true,
-
+    instagram: false,
+    facebook: false,
+    linkedin: false,
   })
 
-  const [accountData] = useState({
-    instagram: { username: '@your_brand', followers: '12.5K', posts: 234, lastSync: 'Just now' },
-    facebook: { username: 'Your Brand Page', followers: '8.2K', posts: 189, lastSync: 'Just now' },
-    linkedin: { username: 'Company Page', followers: '5.8K', posts: 156, lastSync: 'Just now' }
+  const [accountData, setAccountData] = useState({
+    instagram: { username: '', followers: 0, posts: 0, lastSync: '' },
+    facebook: { username: '', followers: 0, posts: 0, lastSync: '' },
+    linkedin: { username: '', followers: 0, posts: 0, lastSync: '' }
   })
 
   const [selectedPlatforms, setSelectedPlatforms] = useState([])
@@ -31,19 +28,94 @@ linkedin: true,
   const [notifications, setNotifications] = useState([])
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [loading, setLoading] = useState(false)
 
+  // Load accounts and posts on mount
   useEffect(() => {
-    // set min attributes on inputs (if any DOM reliant parts exist; pages will use date.min)
-    // nothing required here (React controlled components will set min themselves)
+    loadAccounts()
+    loadPosts()
   }, [])
 
-  const toggleConnection = (platform) => {
-    setConnectedAccounts(prev => {
-      const next = { ...prev, [platform]: !prev[platform] }
-      addNotification(`${platform.charAt(0).toUpperCase() + platform.slice(1)} ${next[platform] ? 'connected successfully!' : 'disconnected'}`, next[platform] ? 'success' : 'info')
-      updatePlatformSelectors(next)
-      return next
-    })
+  const loadAccounts = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      const response = await accountAPI.getAccounts()
+      if (response.success && response.accounts) {
+        const accounts = {}
+        const data = {}
+        
+        response.accounts.forEach(account => {
+          accounts[account.platform] = account.isActive
+          data[account.platform] = {
+            username: account.platformUsername,
+            followers: account.followers || 0,
+            posts: 0, // Would need to query posts to get this
+            lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never'
+          }
+        })
+        
+        setConnectedAccounts(accounts)
+        setAccountData(data)
+      }
+    } catch (error) {
+      console.error('Error loading accounts:', error)
+    }
+  }
+
+  const loadPosts = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      setLoading(true)
+      const [scheduledResponse, publishedResponse] = await Promise.all([
+        postAPI.getScheduledPosts(),
+        postAPI.getPublishedPosts()
+      ])
+
+      if (scheduledResponse.success) {
+        setScheduledPosts(scheduledResponse.posts || [])
+      }
+      if (publishedResponse.success) {
+        setPublishedPosts(publishedResponse.posts || [])
+      }
+    } catch (error) {
+      console.error('Error loading posts:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleConnection = async (platform) => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        addNotification('Please login to connect accounts', 'error')
+        return
+      }
+
+      // If disconnecting, find account and disconnect
+      if (connectedAccounts[platform]) {
+        const accounts = await accountAPI.getAccounts()
+        const account = accounts.accounts?.find(acc => acc.platform === platform && acc.isActive)
+        if (account) {
+          await accountAPI.disconnectAccount(account._id)
+          addNotification(`${platform.charAt(0).toUpperCase() + platform.slice(1)} disconnected`, 'info')
+        }
+      } else {
+        // For connecting, redirect to OAuth (this would be handled by the Accounts page)
+        addNotification(`Redirecting to ${platform} login...`, 'info')
+        // OAuth flow would be initiated from the Accounts page component
+      }
+      
+      await loadAccounts()
+      updatePlatformSelectors(connectedAccounts)
+    } catch (error) {
+      addNotification(`Failed to ${connectedAccounts[platform] ? 'disconnect' : 'connect'} ${platform}`, 'error')
+      console.error('Error toggling connection:', error)
+    }
   }
 
   function updatePlatformSelectors(accounts = connectedAccounts) {
@@ -72,7 +144,7 @@ linkedin: true,
 
   const clearAllNotifications = () => setNotifications([])
 
-  const schedulePost = ({ caption, date, time, platforms }) => {
+  const schedulePost = async ({ caption, date, time, platforms, media }) => {
     if (!caption || !date || !time || !platforms?.length) {
       throw new Error('Please fill in all fields and select at least one platform')
     }
@@ -81,37 +153,49 @@ linkedin: true,
       throw new Error('Please select a future date and time')
     }
 
-    const post = {
-      id: Date.now(),
-      caption,
-      scheduledDate: date,
-      scheduledTime: time,
-      platforms: [...platforms],
-      status: 'scheduled',
-      createdAt: new Date().toISOString(),
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('Please login to schedule posts')
+      }
+
+      // Convert media URL to File if needed
+      let mediaFile = null
+      if (media) {
+        if (media instanceof File) {
+          mediaFile = media
+        } else if (typeof media === 'string' && media.startsWith('blob:')) {
+          // Convert blob URL to File
+          const response = await fetch(media)
+          const blob = await response.blob()
+          mediaFile = new File([blob], 'post-media.jpg', { type: blob.type })
+        }
+      }
+
+      const response = await postAPI.createPost({
+        caption,
+        scheduledDate: date,
+        scheduledTime: time,
+        platforms: [...platforms],
+        media: mediaFile
+      })
+
+      if (response.success) {
+        addNotification(`Post scheduled for ${date} at ${time}`, 'success')
+        await loadPosts() // Reload posts from API
+      } else {
+        throw new Error(response.message || 'Failed to schedule post')
+      }
+    } catch (error) {
+      addNotification(error.message || 'Failed to schedule post', 'error')
+      throw error
     }
-
-    setScheduledPosts(prev => [...prev, post])
-    addNotification(`Post scheduled for ${date} at ${time}`, 'success')
-
-    // For demo: auto-publish after short delay (original had setTimeout 5s)
-    setTimeout(() => {
-      publishScheduledPost(post.id)
-    }, 5000)
   }
 
-  const publishScheduledPost = (postId) => {
-    setScheduledPosts(prev => {
-      const idx = prev.findIndex(p => p.id === postId)
-      if (idx === -1) return prev
-      const post = { ...prev[idx], status: 'published', publishedAt: new Date().toISOString(), likes: Math.floor(Math.random() * 500) + 100, comments: Math.floor(Math.random() * 100) + 20, reach: Math.floor(Math.random() * 5000) + 1000 }
-      setPublishedPosts(pubPrev => [post, ...pubPrev])
-      addNotification(`Post published successfully to ${post.platforms.join(', ')}!`, 'success')
-      // remove from scheduled
-      const copy = [...prev]
-      copy.splice(idx, 1)
-      return copy
-    })
+  const publishScheduledPost = async (postId) => {
+    // This is now handled by the cron scheduler on the backend
+    // We just reload posts to get updated status
+    await loadPosts()
   }
 
   const schedulePostFromModal = ({ caption, date, time, platforms }) => {
@@ -137,6 +221,7 @@ linkedin: true,
     notifications,
     currentMonth,
     currentYear,
+    loading,
     toggleConnection,
     togglePlatform,
     toggleModalPlatform,
@@ -148,7 +233,9 @@ linkedin: true,
     changeMonth,
     updatePlatformSelectors,
     setCurrentMonth,
-    setCurrentYear
+    setCurrentYear,
+    loadAccounts,
+    loadPosts
   }), [
     connectedAccounts,
     selectedPlatforms,
@@ -156,7 +243,9 @@ linkedin: true,
     scheduledPosts,
     publishedPosts,
     notifications,
-    currentMonth, currentYear
+    currentMonth,
+    currentYear,
+    loading
   ])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
