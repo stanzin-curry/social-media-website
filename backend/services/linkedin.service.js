@@ -93,12 +93,60 @@ export const publishToLinkedIn = async (accessToken, authorUrn, text, mediaUrl =
 };
 
 /**
- * Get LinkedIn user profile
+ * Create a text-only post to LinkedIn
+ * @param {string} accessToken - LinkedIn access token
+ * @param {string} personUrn - LinkedIn person URN (e.g., "urn:li:person:123456")
+ * @param {string} text - Post text content
+ * @returns {Promise<Object>} Published post data
+ */
+export const createLinkedInPost = async (accessToken, personUrn, text) => {
+  try {
+    const postData = {
+      author: personUrn,
+      lifecycleState: 'PUBLISHED',
+      specificContent: {
+        'com.linkedin.ugc.ShareContent': {
+          shareCommentary: {
+            text: text.substring(0, 3000) // LinkedIn text limit
+          },
+          shareMediaCategory: 'NONE'
+        }
+      },
+      visibility: {
+        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+      }
+    };
+
+    const response = await axios.post(
+      'https://api.linkedin.com/v2/ugcPosts',
+      postData,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Restli-Protocol-Version': '2.0.0'
+        }
+      }
+    );
+
+    return {
+      success: true,
+      postId: response.data.id,
+      platform: 'linkedin',
+      data: response.data
+    };
+  } catch (error) {
+    throw new Error(`LinkedIn API error: ${error.response?.data?.message || error.message}`);
+  }
+};
+
+/**
+ * Get LinkedIn user profile using OpenID Connect
  */
 export const getLinkedInProfile = async (accessToken) => {
   try {
     const response = await axios.get(
-      'https://api.linkedin.com/v2/me',
+      'https://api.linkedin.com/v2/userinfo',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -106,7 +154,17 @@ export const getLinkedInProfile = async (accessToken) => {
       }
     );
 
-    return response.data;
+    // Map OIDC response to a consistent format
+    const profile = response.data;
+    return {
+      id: profile.sub,
+      name: profile.name,
+      email: profile.email,
+      picture: profile.picture,
+      // Keep original OIDC fields for compatibility
+      sub: profile.sub,
+      ...profile
+    };
   } catch (error) {
     throw new Error(`LinkedIn API error: ${error.response?.data?.message || error.message}`);
   }

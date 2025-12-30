@@ -87,25 +87,35 @@ export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken
 };
 
 // Generate OAuth URLs (for frontend to redirect users)
-export const getFacebookAuthUrl = () => {
+export const getFacebookAuthUrl = (userId) => {
   const clientId = process.env.FACEBOOK_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('FACEBOOK_CLIENT_ID is not set in environment variables');
+  }
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/facebook/callback';
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
+  // Encode userId in state parameter
+  const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
-  return `https://www.facebook.com/v18.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`;
+  return `https://www.facebook.com/v18.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
 };
 
-export const getInstagramAuthUrl = () => {
+export const getInstagramAuthUrl = (userId) => {
   // Instagram uses Facebook OAuth
-  return getFacebookAuthUrl();
+  return getFacebookAuthUrl(userId);
 };
 
-export const getLinkedInAuthUrl = () => {
+export const getLinkedInAuthUrl = (userId) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('LINKEDIN_CLIENT_ID is not set in environment variables');
+  }
   const redirectUri = process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:4000/api/auth/linkedin/callback';
-  const scope = 'w_member_social';
-  const state = Date.now().toString(); // Should be a secure random string in production
+  // OpenID Connect scopes
+  const scope = 'openid profile email w_member_social';
+  // Encode userId in state parameter
+  const state = Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64');
   
-  return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
+  return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scope)}`;
 };
 

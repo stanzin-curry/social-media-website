@@ -105,15 +105,34 @@ export function AppProvider({ children }) {
           addNotification(`${platform.charAt(0).toUpperCase() + platform.slice(1)} disconnected`, 'info')
         }
       } else {
-        // For connecting, redirect to OAuth (this would be handled by the Accounts page)
-        addNotification(`Redirecting to ${platform} login...`, 'info')
-        // OAuth flow would be initiated from the Accounts page component
+        // For connecting, get OAuth URL and redirect
+        let response;
+        switch (platform) {
+          case 'linkedin':
+            response = await accountAPI.getLinkedInAuthUrl();
+            break;
+          case 'facebook':
+            response = await accountAPI.getFacebookAuthUrl();
+            break;
+          case 'instagram':
+            response = await accountAPI.getInstagramAuthUrl();
+            break;
+          default:
+            throw new Error(`Unsupported platform: ${platform}`);
+        }
+
+        if (response.success && response.url) {
+          // Manually redirect to OAuth URL
+          window.location.href = response.url;
+        } else {
+          throw new Error(response.message || 'Failed to get OAuth URL');
+        }
       }
       
       await loadAccounts()
       updatePlatformSelectors(connectedAccounts)
     } catch (error) {
-      addNotification(`Failed to ${connectedAccounts[platform] ? 'disconnect' : 'connect'} ${platform}`, 'error')
+      addNotification(`Failed to ${connectedAccounts[platform] ? 'disconnect' : 'connect'} ${platform}: ${error.message}`, 'error')
       console.error('Error toggling connection:', error)
     }
   }
