@@ -2,6 +2,8 @@ import User from '../models/User.model.js';
 import { generateToken } from '../utils/jwt.js';
 import { getLinkedInAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
 import { connectLinkedInAccount, connectFacebookAccount, connectInstagramAccount } from '../services/oauth.service.js';
+import { createLinkedInPost } from '../services/linkedin.service.js';
+import Account from '../models/Account.model.js';
 import axios from 'axios';
 
 export const register = async (req, res) => {
@@ -401,6 +403,59 @@ export const instagramCallback = async (req, res) => {
   } catch (error) {
     console.error('Instagram OAuth callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=${encodeURIComponent(error.response?.data?.error?.message || error.message || 'oauth_failed')}`);
+  }
+};
+
+// Test route for LinkedIn post creation
+export const testLinkedInPost = async (req, res) => {
+  try {
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        message: 'Text is required'
+      });
+    }
+
+    // Find user's LinkedIn account
+    const account = await Account.findOne({
+      user: userId,
+      platform: 'linkedin',
+      isActive: true
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'LinkedIn account not found. Please connect your LinkedIn account first.'
+      });
+    }
+
+    // Format person URN: urn:li:person:{platformUserId}
+    // platformUserId should be the 'sub' from OIDC (just the ID, not a URN)
+    const personUrn = `urn:li:person:${account.platformUserId}`;
+
+    // Create the post
+    const result = await createLinkedInPost(
+      account.accessToken,
+      personUrn,
+      text
+    );
+
+    res.json({
+      success: true,
+      message: 'Post created successfully',
+      data: result
+    });
+  } catch (error) {
+    console.error('LinkedIn post creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create LinkedIn post',
+      error: error.response?.data || error.message
+    });
   }
 };
 

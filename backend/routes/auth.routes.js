@@ -7,7 +7,8 @@ import {
   facebookAuth,
   facebookCallback,
   instagramAuth,
-  instagramCallback
+  instagramCallback,
+  testLinkedInPost
 } from '../controllers/auth.controller.js';
 import { authenticate } from '../utils/middleware.js';
 
@@ -39,6 +40,9 @@ router.get('/facebook/callback', facebookCallback);
 // OAuth routes - Instagram
 router.get('/instagram', authenticate, instagramAuth);
 router.get('/instagram/callback', instagramCallback);
+
+// Test route for LinkedIn posting
+router.post('/test-linkedin-post', authenticate, testLinkedInPost);
 
 export default router;
 
