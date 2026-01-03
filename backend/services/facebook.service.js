@@ -64,3 +64,50 @@ export const getFacebookPageInfo = async (accessToken) => {
   }
 };
 
+/**
+ * Create a Facebook post
+ * Fetches user's pages, selects the first one, and posts to it using the page's access token
+ * @param {string} accessToken - User's Facebook access token
+ * @param {string} message - Post message content
+ * @returns {Promise<Object>} API response including post id
+ */
+export const createFacebookPost = async (accessToken, message) => {
+  try {
+    // Fetch user's pages
+    const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+      params: {
+        access_token: accessToken
+      }
+    });
+
+    const pages = pagesResponse.data.data;
+
+    // Check if pages exist
+    if (!pages || pages.length === 0) {
+      throw new Error('No Facebook pages found. Please create a Facebook page first.');
+    }
+
+    // Select the first page
+    const firstPage = pages[0];
+    const pageId = firstPage.id;
+    const pageAccessToken = firstPage.access_token;
+
+    // Post to the page using the page's access token
+    const postResponse = await axios.post(
+      `https://graph.facebook.com/v19.0/${pageId}/feed`,
+      {
+        message: message,
+        access_token: pageAccessToken
+      }
+    );
+
+    // Return the API response (including id of the post)
+    return postResponse.data;
+  } catch (error) {
+    if (error.message === 'No Facebook pages found. Please create a Facebook page first.') {
+      throw error;
+    }
+    throw new Error(`Facebook API error: ${error.response?.data?.error?.message || error.message}`);
+  }
+};
+
