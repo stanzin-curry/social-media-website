@@ -3,7 +3,7 @@ import { generateToken } from '../utils/jwt.js';
 import { getLinkedInAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
 import { connectLinkedInAccount, connectFacebookAccount, connectInstagramAccount } from '../services/oauth.service.js';
 import { createLinkedInPost } from '../services/linkedin.service.js';
-import { createFacebookPost } from '../services/facebook.service.js';
+import { createFacebookPost, postToInstagram } from '../services/facebook.service.js';
 import Account from '../models/Account.model.js';
 import axios from 'axios';
 
@@ -271,6 +271,7 @@ export const facebookCallback = async (req, res) => {
     try {
       const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
         params: {
+          fields: 'name,access_token,id,instagram_business_account',
           access_token: access_token
         }
       });
@@ -286,6 +287,13 @@ export const facebookCallback = async (req, res) => {
         console.log('=== Facebook Pages Response (Verification) ===');
         console.log('Pages data:', JSON.stringify(pagesResponse.data, null, 2));
         console.log('=== End Facebook Pages Response ===');
+        
+        // Check for Instagram Business Account IDs
+        for (const page of pagesData) {
+          if (page.instagram_business_account) {
+            console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
+          }
+        }
       }
     } catch (pagesError) {
       console.error('Error fetching Facebook Pages:', pagesError.response?.data || pagesError.message);
@@ -317,7 +325,7 @@ export const facebookCallback = async (req, res) => {
     try {
       const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
         params: {
-          fields: 'access_token,name,instagram_business_account',
+          fields: 'name,access_token,id,instagram_business_account',
           access_token: access_token
         }
       });
@@ -333,6 +341,7 @@ export const facebookCallback = async (req, res) => {
       if (pages && pages.length > 0) {
         for (const page of pages) {
           if (page.instagram_business_account) {
+            console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
             const igAccount = page.instagram_business_account;
             const pageAccessToken = page.access_token; // Use Page's access token, not user's
             
@@ -627,6 +636,72 @@ export const testFacebookPost = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to create Facebook post',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+// Test route for Instagram post creation
+export const testInstagramPost = async (req, res) => {
+  try {
+    const { accessToken, instagramId, imageUrl, caption } = req.body;
+    const userId = req.user._id;
+
+    // If accessToken and instagramId are not provided, try to get from user's account
+    let token = accessToken;
+    let igId = instagramId;
+
+    if (!token || !igId) {
+      // Find user's Instagram account
+      const account = await Account.findOne({
+        user: userId,
+        platform: 'instagram',
+        isActive: true
+      });
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: 'Instagram account not found. Please connect your Instagram account first.'
+        });
+      }
+
+      token = token || account.accessToken;
+      igId = igId || account.platformUserId;
+    }
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'imageUrl is required'
+      });
+    }
+
+    if (!caption) {
+      return res.status(400).json({
+        success: false,
+        message: 'caption is required'
+      });
+    }
+
+    // Create the post
+    const result = await postToInstagram(
+      token,
+      igId,
+      imageUrl,
+      caption
+    );
+
+    res.json({
+      success: true,
+      message: 'Instagram post created successfully',
+      data: result
+    });
+  } catch (error) {
+    console.error('Instagram post creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create Instagram post',
       error: error.response?.data || error.message
     });
   }

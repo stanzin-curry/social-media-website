@@ -5,6 +5,72 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Create post handler for /create endpoint (accepts content, mediaUrl, scheduledAt, etc.)
+export const createPostFromCreateEndpoint = async (req, res) => {
+  try {
+    const { content, platforms, scheduledDate, scheduledTime } = req.body;
+    const userId = req.user._id;
+
+    // Validate required fields
+    if (!content || !platforms || !scheduledDate || !scheduledTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide content, platforms, scheduledDate, and scheduledTime'
+      });
+    }
+
+    // Combine date and time
+    const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+    
+    if (scheduledAt <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Scheduled date must be in the future'
+      });
+    }
+
+    // Handle media upload (req.file is set by Multer middleware)
+    let mediaUrl = null;
+    if (req.file) {
+      mediaUrl = `/uploads/${req.file.filename}`;
+    }
+
+    // Parse platforms if it's a JSON string
+    let platformsArray;
+    try {
+      platformsArray = typeof platforms === 'string' ? JSON.parse(platforms) : platforms;
+    } catch (e) {
+      platformsArray = Array.isArray(platforms) ? platforms : [platforms];
+    }
+
+    // Ensure platforms is an array
+    if (!Array.isArray(platformsArray)) {
+      platformsArray = [platformsArray];
+    }
+
+    // Create post with mapped field names
+    const post = await Post.create({
+      user: userId, // Map userId to user (existing model field)
+      caption: content, // Map content to caption (existing model field)
+      media: mediaUrl, // Map mediaUrl to media (existing model field)
+      platforms: platformsArray,
+      scheduledDate: scheduledAt, // Map scheduledAt to scheduledDate (existing model field)
+      status: 'scheduled' // Default status is SCHEDULED (lowercase for existing model)
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Post scheduled successfully',
+      post
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create post'
+    });
+  }
+};
+
 export const createPost = async (req, res) => {
   try {
     const { caption, platforms, scheduledDate, scheduledTime } = req.body;
@@ -67,8 +133,9 @@ export const getPosts = async (req, res) => {
       query.status = status;
     }
 
+    // Sort by scheduledAt descending (newest/upcoming first)
     const posts = await Post.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ scheduledDate: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 

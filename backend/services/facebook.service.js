@@ -111,3 +111,50 @@ export const createFacebookPost = async (accessToken, message) => {
   }
 };
 
+/**
+ * Post to Instagram
+ * Creates a media container and publishes it to Instagram
+ * @param {string} accessToken - Instagram Business Account access token (Page access token)
+ * @param {string} instagramId - Instagram Business Account ID
+ * @param {string} imageUrl - URL of the image to post
+ * @param {string} caption - Caption for the post
+ * @returns {Promise<Object>} Published post data
+ */
+export const postToInstagram = async (accessToken, instagramId, imageUrl, caption) => {
+  try {
+    // Step 1: Create media container
+    const containerResponse = await axios.post(
+      `https://graph.facebook.com/v19.0/${instagramId}/media`,
+      {
+        image_url: imageUrl,
+        caption: caption,
+        access_token: accessToken
+      }
+    );
+
+    const creationId = containerResponse.data.id;
+
+    if (!creationId) {
+      throw new Error('Failed to create media container. No creation ID returned.');
+    }
+
+    // Step 2: Publish the media
+    const publishResponse = await axios.post(
+      `https://graph.facebook.com/v19.0/${instagramId}/media_publish`,
+      {
+        creation_id: creationId,
+        access_token: accessToken
+      }
+    );
+
+    return {
+      success: true,
+      postId: publishResponse.data.id,
+      platform: 'instagram',
+      creationId: creationId
+    };
+  } catch (error) {
+    throw new Error(`Instagram API error: ${error.response?.data?.error?.message || error.message}`);
+  }
+};
+

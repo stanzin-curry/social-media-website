@@ -1,8 +1,9 @@
 import express from 'express';
 import { authenticate } from '../utils/middleware.js';
-import { upload } from '../utils/upload.js';
+import upload from '../middleware/upload.middleware.js';
 import {
   createPost,
+  createPostFromCreateEndpoint,
   getPosts,
   getPostById,
   updatePost,
@@ -16,6 +17,8 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticate);
 
+// Create post endpoint (accepts content, mediaUrl, scheduledAt, etc.)
+router.post('/create', upload.single('media'), createPostFromCreateEndpoint);
 router.post('/', upload.single('media'), createPost);
 router.get('/', getPosts);
 router.get('/scheduled', getScheduledPosts);

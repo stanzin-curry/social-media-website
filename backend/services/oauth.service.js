@@ -95,11 +95,23 @@ export const getFacebookAuthUrl = (userId) => {
   }
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/facebook/callback';
   // Facebook scopes for Social Media Scheduler: comma-separated
-  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts';
+  // Verify scope includes all required permissions
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
-  return `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
+  // Build query parameters
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: scope,
+    response_type: 'code',
+    state: state,
+    auth_type: 'rerequest', // Force re-authentication to get updated permissions
+    prompt: 'consent' // Request explicit consent for permissions
+  });
+  
+  return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`;
 };
 
 export const getInstagramAuthUrl = (userId) => {
