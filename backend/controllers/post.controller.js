@@ -93,18 +93,30 @@ export const createPost = async (req, res) => {
       });
     }
 
-    // Handle media upload
+    // Handle media upload - robust file check
     let mediaUrl = null;
     if (req.file) {
       mediaUrl = `/uploads/${req.file.filename}`;
     }
 
-    const platformsArray = Array.isArray(platforms) ? platforms : [platforms];
+    // Parse platforms if it's a JSON string (from FormData)
+    let platformsArray;
+    try {
+      platformsArray = typeof platforms === 'string' ? JSON.parse(platforms) : platforms;
+    } catch (e) {
+      // If parsing fails, treat as single platform string
+      platformsArray = [platforms];
+    }
+    
+    // Ensure platforms is an array
+    if (!Array.isArray(platformsArray)) {
+      platformsArray = [platformsArray];
+    }
 
     const post = await Post.create({
       user: userId,
       caption,
-      media: mediaUrl,
+      media: mediaUrl, // Can be null for text-only posts
       platforms: platformsArray,
       scheduledDate: scheduledDateTime,
       status: 'scheduled'

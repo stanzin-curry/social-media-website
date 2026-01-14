@@ -2,10 +2,34 @@ import React, { useState } from 'react'
 import FullCalendar from '../components/FullCalendar'
 import { useApp } from '../context/AppContext'
 import ScheduleModal from '../components/ScheduleModal'
+import PostDetailModal from '../components/PostDetailModal'
 
 export default function CalendarPage(){
-  const { changeMonth, currentMonth, currentYear } = useApp()
+  const { changeMonth, currentMonth, currentYear, loadPosts } = useApp()
   const [modalOpen, setModalOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(null)
+  const [selectedPost, setSelectedPost] = useState(null)
+  const [postDetailOpen, setPostDetailOpen] = useState(false)
+
+  const handleDayClick = (dateStr) => {
+    setSelectedDate(dateStr)
+    setModalOpen(true)
+  }
+
+  const handlePostClick = (post) => {
+    setSelectedPost(post)
+    setPostDetailOpen(true)
+  }
+
+  const handleCloseModal = () => {
+    setModalOpen(false)
+    setSelectedDate(null)
+  }
+
+  const handleClosePostDetail = () => {
+    setPostDetailOpen(false)
+    setSelectedPost(null)
+  }
 
   return (
     <div>
@@ -24,11 +48,19 @@ export default function CalendarPage(){
             {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><div key={d} className="text-gray-600 font-semibold py-2">{d}</div>)}
           </div>
 
-          <FullCalendar onDayClick={()=>setModalOpen(true)} />
+          <FullCalendar onDayClick={handleDayClick} onPostClick={handlePostClick} />
         </div>
       </div>
 
-      <ScheduleModal open={modalOpen} onClose={()=>setModalOpen(false)} />
+      <ScheduleModal 
+        open={modalOpen} 
+        onClose={handleCloseModal} 
+        initialDate={selectedDate}
+        onPostCreated={loadPosts}
+      />
+      {selectedPost && (
+        <PostDetailModal open={postDetailOpen} onClose={handleClosePostDetail} post={selectedPost} />
+      )}
     </div>
   )
 }
