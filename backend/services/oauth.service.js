@@ -95,8 +95,8 @@ export const getFacebookAuthUrl = (userId) => {
   }
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/facebook/callback';
   // Facebook scopes for Social Media Scheduler: comma-separated
-  // Verify scope includes all required permissions
-  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish';
+  // Verify scope includes all required permissions (read_insights needed for analytics)
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
@@ -120,8 +120,8 @@ export const getInstagramAuthUrl = (userId) => {
     throw new Error('FACEBOOK_CLIENT_ID is not set in environment variables');
   }
   const redirectUri = process.env.INSTAGRAM_REDIRECT_URI || process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/instagram/callback';
-  // Instagram scopes: requires Facebook OAuth with Instagram permissions
-  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish';
+  // Instagram scopes: requires Facebook OAuth with Instagram permissions (read_insights needed for analytics)
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   

@@ -1,4 +1,7 @@
 import Post from '../models/Post.model.js';
+import Account from '../models/Account.model.js';
+import { getPostStats } from '../services/facebook.service.js';
+import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -312,6 +315,194 @@ export const deletePost = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to delete post'
+    });
+  }
+};
+
+export const refreshPostAnalytics = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const postId = req.params.id;
+
+    // Find the post
+    const post = await Post.findOne({
+      _id: postId,
+      user: userId
+    });
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    // Check if post is published
+    if (post.status !== 'published') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only refresh analytics for published posts'
+      });
+    }
+
+    // Find Facebook platform entry
+    const facebookPlatform = post.publishedPlatforms?.find(
+      p => p.platform === 'facebook' && p.status === 'success'
+    );
+
+    // Check if Facebook platform entry exists
+    if (!facebookPlatform) {
+      return res.status(400).json({
+        success: false,
+        message: 'Analytics not available for this post. This post was not published to Facebook or the publishing record is missing.'
+      });
+    }
+
+    // Validate that platformPostId exists and is not empty
+    if (!facebookPlatform.platformPostId || facebookPlatform.platformPostId.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Analytics not available for this post (Facebook Post ID missing). This may be an older post created before ID tracking was implemented.'
+      });
+    }
+
+    // Get Facebook account to retrieve access token
+    const account = await Account.findOne({
+      user: userId,
+      platform: 'facebook',
+      isActive: true
+    });
+
+    if (!account) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active Facebook account found'
+      });
+    }
+
+    // Fetch pages to get page access token first
+    const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+      params: {
+        access_token: account.accessToken,
+        fields: 'id,access_token'
+      }
+    });
+
+    if (!pagesResponse.data.data || pagesResponse.data.data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No Facebook pages found'
+      });
+    }
+
+    // Determine pageId and postId
+    // Facebook post IDs are typically in format: {pageId}_{postId}
+    let pageId;
+    let postIdOnly = facebookPlatform.platformPostId.trim(); // Ensure no whitespace
+
+    // Validate postId format
+    if (!postIdOnly || postIdOnly.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Analytics not available for this post (Invalid Facebook Post ID).'
+      });
+    }
+
+    try {
+      if (facebookPlatform.pageId) {
+        // Use stored pageId if available
+        pageId = facebookPlatform.pageId;
+      } else if (postIdOnly.includes('_')) {
+        // Extract pageId from postId format
+        const parts = postIdOnly.split('_');
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          pageId = parts[0];
+          postIdOnly = postIdOnly; // Already in correct format
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: 'Analytics not available for this post (Invalid Facebook Post ID format).'
+          });
+        }
+      } else {
+        // If no pageId and postId doesn't have underscore, use first available page
+        // This shouldn't normally happen, but handle gracefully
+        if (pagesResponse.data.data.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Analytics not available for this post (No Facebook pages found).'
+          });
+        }
+        pageId = pagesResponse.data.data[0].id;
+        postIdOnly = `${pageId}_${postIdOnly}`;
+      }
+    } catch (error) {
+      console.error('[Refresh Analytics] Error parsing post ID:', error);
+      return res.status(400).json({
+        success: false,
+        message: 'Analytics not available for this post (Error processing Facebook Post ID).'
+      });
+    }
+
+    // Find the page (we already validated pagesResponse.data.data exists above)
+    const selectedPage = pagesResponse.data.data.find(p => p.id === pageId) || pagesResponse.data.data[0];
+    
+    if (!selectedPage || !selectedPage.access_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page Access Token not found. Please reconnect your Facebook Page.'
+      });
+    }
+
+    const pageAccessToken = selectedPage.access_token;
+
+    // Fetch analytics from Facebook
+    const analytics = await getPostStats(pageId, postIdOnly, pageAccessToken);
+
+    // Update post analytics
+    post.analytics = {
+      likes: analytics.likes,
+      comments: analytics.comments,
+      reach: analytics.reach,
+      shares: analytics.shares
+    };
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: 'Analytics refreshed successfully',
+      post
+    });
+  } catch (error) {
+    console.error('[Refresh Analytics] Error:', {
+      postId: req.params.id,
+      userId: req.user._id,
+      error: error.message,
+      isPermissionError: error.isPermissionError,
+      stack: error.stack
+    });
+    
+    // Handle permission errors specifically
+    if (error.isPermissionError) {
+      let message = error.message || 'Missing required Facebook permissions.';
+      
+      if (error.requiresAppReview) {
+        message += ' The read_insights permission requires Facebook App Review approval. Please check your Facebook App Dashboard > App Review to ensure the permission is approved.';
+      } else {
+        message += ' Please disconnect and reconnect your Facebook account to grant the required permissions.';
+      }
+      
+      return res.status(403).json({
+        success: false,
+        message: message
+      });
+    }
+    
+    // Handle other errors
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to refresh analytics'
     });
   }
 };

@@ -117,5 +117,3 @@ User edits post → PostDetailModal → API → Reload posts
 ## Testing Considerations
 
 - Verify Quick Scheduling pre-fills correct date when clicking different days
-- Test post display on mobile devices
-- Verify platform icons display correctly for all platforms

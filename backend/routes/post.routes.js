@@ -9,7 +9,8 @@ import {
   updatePost,
   deletePost,
   getScheduledPosts,
-  getPublishedPosts
+  getPublishedPosts,
+  refreshPostAnalytics
 } from '../controllers/post.controller.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.post('/', upload.single('media'), createPost);
 router.get('/', getPosts);
 router.get('/scheduled', getScheduledPosts);
 router.get('/published', getPublishedPosts);
+router.post('/:id/refresh-analytics', refreshPostAnalytics); // Must come before /:id route
 router.get('/:id', getPostById);
 router.put('/:id', upload.single('media'), updatePost);
 router.delete('/:id', deletePost);

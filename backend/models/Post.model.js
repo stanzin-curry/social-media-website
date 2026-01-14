@@ -38,6 +38,7 @@ const postSchema = new mongoose.Schema({
       enum: ['instagram', 'facebook', 'linkedin']
     },
     platformPostId: String,
+    pageId: String, // Facebook Page ID (for Facebook posts)
     publishedAt: Date,
     status: {
       type: String,

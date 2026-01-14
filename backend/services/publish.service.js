@@ -93,6 +93,7 @@ export const publishPost = async (post) => {
       post.publishedPlatforms.push({
         platform,
         platformPostId: publishResult.postId,
+        pageId: publishResult.pageId || null, // Save page ID for Facebook posts
         publishedAt: new Date(),
         status: 'success'
       });

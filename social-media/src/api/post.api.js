@@ -70,5 +70,10 @@ export const postAPI = {
     const response = await api.delete(`/posts/${id}`);
     return response.data;
   },
+
+  refreshAnalytics: async (postId) => {
+    const response = await api.post(`/posts/${postId}/refresh-analytics`);
+    return response.data;
+  },
 };
 

@@ -294,3 +294,104 @@ export const postToInstagram = async (accessToken, instagramId, imageUrl, captio
   }
 };
 
+/**
+ * Get Facebook post analytics/insights
+ * @param {string} pageId - Facebook Page ID
+ * @param {string} postId - Facebook Post ID (format: {pageId}_{postId})
+ * @param {string} pageAccessToken - Page Access Token (required for insights)
+ * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
+ */
+export const getPostStats = async (pageId, postId, pageAccessToken) => {
+  try {
+    // First, get basic post stats (likes, comments, shares)
+    const postResponse = await axios.get(
+      `https://graph.facebook.com/v19.0/${postId}`,
+      {
+        params: {
+          fields: 'shares,likes.summary(true),comments.summary(true)',
+          access_token: pageAccessToken
+        }
+      }
+    );
+
+    const postData = postResponse.data;
+    
+    // Get basic metrics
+    const likes = postData.likes?.summary?.total_count || 0;
+    const comments = postData.comments?.summary?.total_count || 0;
+    const shares = postData.shares?.count || 0;
+    
+    // Try to get insights (reach/impressions) - this might fail if post is too new or missing permissions
+    let reach = 0;
+    try {
+      const insightsResponse = await axios.get(
+        `https://graph.facebook.com/v19.0/${postId}/insights`,
+        {
+          params: {
+            metric: 'post_impressions',
+            access_token: pageAccessToken
+          }
+        }
+      );
+      
+      if (insightsResponse.data?.data && insightsResponse.data.data.length > 0) {
+        const insight = insightsResponse.data.data[0];
+        // Insights can have different structures - check for values array
+        if (insight.values && insight.values.length > 0) {
+          reach = insight.values[0].value || 0;
+        } else if (insight.value !== undefined) {
+          reach = insight.value;
+        }
+      }
+    } catch (insightsError) {
+      const errorCode = insightsError.response?.data?.error?.code;
+      const errorType = insightsError.response?.data?.error?.type;
+      const errorMessage = insightsError.response?.data?.error?.message || insightsError.message;
+      
+      // Check if it's a permissions error for insights
+      if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
+        // Don't throw - just log and continue with reach = 0
+        // The read_insights permission requires App Review approval from Facebook
+        // For now, we'll return basic stats (likes, comments, shares) without reach
+        console.warn(`[Facebook] Insights permission missing for post ${postId}. The read_insights permission requires Facebook App Review approval. Basic stats (likes, comments, shares) are still available.`);
+        // Set reach to 0 and continue - don't fail the entire request
+        reach = 0;
+      } else {
+        // Insights might not be available immediately after posting or for other reasons
+        // This is not a critical error, we'll just use 0 for reach
+        console.log(`[Facebook] Insights not available for post ${postId}:`, errorMessage);
+        reach = 0;
+      }
+    }
+    
+    return {
+      likes,
+      comments,
+      shares,
+      reach
+    };
+  } catch (error) {
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    const errorCode = error.response?.data?.error?.code;
+    const errorType = error.response?.data?.error?.type;
+    
+    console.error(`[Facebook] Analytics error for post ${postId}:`, {
+      message: errorMessage,
+      code: errorCode,
+      type: errorType,
+      fullError: error.response?.data
+    });
+    
+    // Check if it's a permissions error for basic stats (likes, comments, shares)
+    // This is more critical than insights permission
+    if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
+      const permissionError = new Error('Missing required Facebook permissions. The read_insights permission requires Facebook App Review approval. Please check your Facebook App settings and ensure the app has the necessary permissions approved.');
+      permissionError.isPermissionError = true;
+      permissionError.requiresAppReview = true;
+      throw permissionError;
+    }
+    
+    throw new Error(`Facebook analytics error: ${errorMessage}`);
+  }
+};
+
