@@ -1,6 +1,6 @@
 import Post from '../models/Post.model.js';
 import Account from '../models/Account.model.js';
-import { publishToFacebook } from './facebook.service.js';
+import { postToFacebook } from './facebook.service.js';
 import { publishToInstagram } from './instagram.service.js';
 import { publishToLinkedIn } from './linkedin.service.js';
 import { fileURLToPath } from 'url';
@@ -44,13 +44,16 @@ export const publishPost = async (post) => {
 
       switch (platform) {
         case 'facebook':
-          // For Facebook, we need a page ID. In production, this should be stored in the Account model
-          // For now, using the platformUserId as page ID
-          publishResult = await publishToFacebook(
-            account.accessToken,
-            account.platformUserId,
-            post.caption,
-            mediaUrl
+          // Use postToFacebook which fetches pages and uses Page Access Token
+          // account.accessToken is the user's token, which will be used to fetch pages
+          // postToFacebook will extract the Page Access Token and post to the page
+          // Note: account.platformUserId is the user's Facebook ID, not the page ID
+          // So we pass null to use the first available page
+          publishResult = await postToFacebook(
+            account.accessToken,  // User's access token (used to fetch pages)
+            post.caption,         // Post message
+            mediaUrl,             // Optional media URL
+            null                  // Use first available page (account.platformUserId is user ID, not page ID)
           );
           break;
 
@@ -90,6 +93,7 @@ export const publishPost = async (post) => {
       post.publishedPlatforms.push({
         platform,
         platformPostId: publishResult.postId,
+        pageId: publishResult.pageId || null, // Save page ID for Facebook posts
         publishedAt: new Date(),
         status: 'success'
       });

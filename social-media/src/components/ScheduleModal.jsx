@@ -1,19 +1,50 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 
-export default function ScheduleModal({ open, onClose }) {
+export default function ScheduleModal({ open, onClose, initialDate, onPostCreated }) {
   const { selectedModalPlatforms, toggleModalPlatform, schedulePostFromModal, connectedAccounts } = useApp()
   const [caption, setCaption] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = () => {
+  // Update date when initialDate prop changes (Quick Scheduling)
+  useEffect(() => {
+    if (initialDate) {
+      setDate(initialDate)
+    }
+  }, [initialDate])
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!open) {
+      setCaption('')
+      setDate('')
+      setTime('')
+      setLoading(false)
+    }
+  }, [open])
+
+  const handleSubmit = async () => {
+    if (!caption || !date || !time || selectedModalPlatforms.length === 0) {
+      alert('Please fill in all fields and select at least one platform')
+      return
+    }
+
     try {
-      schedulePostFromModal({ caption, date, time, platforms: selectedModalPlatforms })
+      setLoading(true)
+      await schedulePostFromModal({ caption, date, time, platforms: selectedModalPlatforms })
+      // Success - refresh posts and close modal
+      if (onPostCreated) {
+        onPostCreated()
+      }
       setCaption(''); setDate(''); setTime('')
       onClose?.()
     } catch (err) {
-      alert(err.message)
+      // Error handling - show alert and keep modal open
+      alert(err.message || 'Failed to schedule post. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -59,8 +90,18 @@ export default function ScheduleModal({ open, onClose }) {
         </div>
 
         <div className="p-4 lg:p-6 border-t border-gray-200 flex gap-3 sticky bottom-0 bg-white">
-          <button onClick={onClose} className="flex-1 px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg font-semibold"><i className="fas fa-clock mr-2" />Schedule Post</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 bg-gray-100 rounded-lg" disabled={loading}>Cancel</button>
+          <button onClick={handleSubmit} className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading}>
+            {loading ? (
+              <>
+                <i className="fas fa-spinner fa-spin mr-2" />Scheduling...
+              </>
+            ) : (
+              <>
+                <i className="fas fa-clock mr-2" />Schedule Post
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

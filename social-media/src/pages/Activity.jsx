@@ -1,13 +1,34 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { postAPI } from '../api/post.api.js'
 
 export default function Activity(){
-  const { publishedPosts, scheduledPosts } = useApp()
+  const { publishedPosts, scheduledPosts, loadPosts, addNotification } = useApp()
+  const [refreshing, setRefreshing] = useState({})
   const allPosts = [...publishedPosts, ...scheduledPosts].sort((a,b)=> {
     const dateA = new Date(b.publishedAt || b.scheduledDate || b.createdAt || 0)
     const dateB = new Date(a.publishedAt || a.scheduledDate || a.createdAt || 0)
     return dateA - dateB
   })
+
+  const handleRefreshAnalytics = async (postId) => {
+    setRefreshing(prev => ({ ...prev, [postId]: true }))
+    try {
+      const response = await postAPI.refreshAnalytics(postId)
+      if (response.success) {
+        addNotification('Analytics refreshed successfully', 'success')
+        // Reload posts to get updated analytics
+        await loadPosts()
+      } else {
+        addNotification(response.message || 'Failed to refresh analytics', 'error')
+      }
+    } catch (error) {
+      console.error('Failed to refresh analytics:', error)
+      addNotification(error.message || 'Failed to refresh analytics', 'error')
+    } finally {
+      setRefreshing(prev => ({ ...prev, [postId]: false }))
+    }
+  }
 
   return (
     <div>
@@ -58,6 +79,15 @@ export default function Activity(){
                     <span><i className="fas fa-eye text-blue-400" /> {analytics.reach?.toLocaleString() || 0} reach</span>
                     <span><i className="fas fa-heart text-red-400" /> {analytics.likes || 0}</span>
                     <span><i className="fas fa-comment text-blue-400" /> {analytics.comments || 0}</span>
+                    {p.publishedPlatforms?.some(pp => pp.platform === 'facebook' && pp.status === 'success') && (
+                      <button
+                        onClick={() => handleRefreshAnalytics(postId)}
+                        disabled={refreshing[postId]}
+                        className="ml-auto px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {refreshing[postId] ? 'Refreshing...' : 'Refresh Stats'}
+                      </button>
+                    )}
                   </div>
                 )}
                 {p.platforms && (

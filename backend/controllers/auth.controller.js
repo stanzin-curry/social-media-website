@@ -3,6 +3,7 @@ import { generateToken } from '../utils/jwt.js';
 import { getLinkedInAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
 import { connectLinkedInAccount, connectFacebookAccount, connectInstagramAccount } from '../services/oauth.service.js';
 import { createLinkedInPost } from '../services/linkedin.service.js';
+import { createFacebookPost, postToInstagram } from '../services/facebook.service.js';
 import Account from '../models/Account.model.js';
 import axios from 'axios';
 
@@ -252,7 +253,7 @@ export const facebookCallback = async (req, res) => {
     }
 
     // Exchange authorization code for access token
-    const tokenResponse = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
+    const tokenResponse = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
       params: {
         client_id: process.env.FACEBOOK_CLIENT_ID,
         client_secret: process.env.FACEBOOK_CLIENT_SECRET,
@@ -263,8 +264,45 @@ export const facebookCallback = async (req, res) => {
 
     const { access_token } = tokenResponse.data;
 
+    // Debug: Log token received
+    console.log("🔍 Token received. Fetching pages...");
+
+    // Fetch user's Pages immediately after getting access token
+    try {
+      const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+        params: {
+          fields: 'name,access_token,id,instagram_business_account',
+          access_token: access_token
+        }
+      });
+      
+      const pagesData = pagesResponse.data.data || [];
+      const pagesCount = pagesData.length;
+      
+      console.log("📄 Pages found in Callback:", pagesCount);
+      
+      if (pagesCount === 0) {
+        console.warn("⚠️ No pages found. User might need to 'Reconnect' and select pages.");
+      } else {
+        console.log('=== Facebook Pages Response (Verification) ===');
+        console.log('Pages data:', JSON.stringify(pagesResponse.data, null, 2));
+        console.log('=== End Facebook Pages Response ===');
+        
+        // Check for Instagram Business Account IDs
+        for (const page of pagesData) {
+          if (page.instagram_business_account) {
+            console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
+          }
+        }
+      }
+    } catch (pagesError) {
+      console.error('Error fetching Facebook Pages:', pagesError.response?.data || pagesError.message);
+      console.warn("⚠️ No pages found. User might need to 'Reconnect' and select pages.");
+      // Continue with account save even if Pages fetch fails
+    }
+
     // Get user profile
-    const profileResponse = await axios.get('https://graph.facebook.com/v18.0/me', {
+    const profileResponse = await axios.get('https://graph.facebook.com/v19.0/me', {
       params: {
         access_token: access_token,
         fields: 'id,name,email'
@@ -275,13 +313,85 @@ export const facebookCallback = async (req, res) => {
     const platformUserId = profile.id;
     const platformUsername = profile.name || profile.email || profile.id;
 
-    // Save account
+    // Save Facebook account
     await connectFacebookAccount({
       userId,
       accessToken: access_token,
       platformUserId,
       platformUsername
     });
+
+    // Fetch user's Pages with Instagram Business Account details
+    try {
+      const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+        params: {
+          fields: 'name,access_token,id,instagram_business_account',
+          access_token: access_token
+        }
+      });
+
+      const pages = pagesResponse.data.data || [];
+      
+      console.log('=== Facebook Pages Response ===');
+      console.log('Pages found:', pages.length);
+      console.log('Pages data:', JSON.stringify(pagesResponse.data, null, 2));
+      console.log('=== End Facebook Pages Response ===');
+
+      // Find the first page with an Instagram Business Account
+      if (pages && pages.length > 0) {
+        for (const page of pages) {
+          if (page.instagram_business_account) {
+            console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
+            const igAccount = page.instagram_business_account;
+            const pageAccessToken = page.access_token; // Use Page's access token, not user's
+            
+            // Get Instagram account username
+            let igUsername = igAccount.username || igAccount.id;
+            try {
+              const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${igAccount.id}`, {
+                params: {
+                  access_token: pageAccessToken,
+                  fields: 'username'
+                }
+              });
+              if (igInfoResponse.data.username) {
+                igUsername = igInfoResponse.data.username;
+              }
+            } catch (igInfoError) {
+              console.error('Error fetching Instagram username:', igInfoError.response?.data || igInfoError.message);
+              // Continue with ID if username fetch fails
+            }
+
+            // Save Instagram account using findOneAndUpdate with upsert
+            await Account.findOneAndUpdate(
+              { 
+                user: userId, 
+                platform: 'instagram' 
+              },
+              {
+                user: userId,
+                platform: 'instagram',
+                platformUserId: igAccount.id,
+                platformUsername: igUsername,
+                accessToken: pageAccessToken, // Critical: Use Page's token, not user's
+                isActive: true,
+                lastSync: new Date()
+              },
+              { 
+                upsert: true,
+                new: true
+              }
+            );
+
+            console.log('Instagram Business Account automatically connected:', igAccount.id);
+            break; // Only save the first IG account found
+          }
+        }
+      }
+    } catch (pagesError) {
+      console.error('Error fetching Facebook Pages or Instagram accounts:', pagesError.response?.data || pagesError.message);
+      // Continue even if Pages/IG fetch fails - Facebook account is already saved
+    }
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=facebook_connected`);
   } catch (error) {
@@ -342,7 +452,7 @@ export const instagramCallback = async (req, res) => {
     }
 
     // Exchange authorization code for access token
-    const tokenResponse = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
+    const tokenResponse = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
       params: {
         client_id: process.env.FACEBOOK_CLIENT_ID,
         client_secret: process.env.FACEBOOK_CLIENT_SECRET,
@@ -353,51 +463,75 @@ export const instagramCallback = async (req, res) => {
 
     const { access_token } = tokenResponse.data;
 
-    // Get Instagram Business Account ID (requires Facebook Page connection)
-    // First, get user's pages
-    const pagesResponse = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
+    // Fetch pages with Instagram Business Account details
+    const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
       params: {
+        fields: 'access_token,name,instagram_business_account',
         access_token: access_token
       }
     });
 
-    const pages = pagesResponse.data.data;
+    const pages = pagesResponse.data.data || [];
     if (!pages || pages.length === 0) {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=no_facebook_page`);
     }
 
-    // Get Instagram Business Account connected to the first page
-    const pageId = pages[0].id;
-    const instagramResponse = await axios.get(`https://graph.facebook.com/v18.0/${pageId}`, {
-      params: {
-        access_token: access_token,
-        fields: 'instagram_business_account'
-      }
-    });
+    // Find the first page with an Instagram Business Account
+    let instagramAccount = null;
+    let pageAccessToken = null;
+    let pageName = null;
 
-    const instagramAccountId = instagramResponse.data.instagram_business_account?.id;
-    if (!instagramAccountId) {
+    for (const page of pages) {
+      if (page.instagram_business_account) {
+        instagramAccount = page.instagram_business_account;
+        pageAccessToken = page.access_token; // Critical: Use Page's token, not user's
+        pageName = page.name;
+        break;
+      }
+    }
+
+    if (!instagramAccount) {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=no_instagram_account`);
     }
 
-    // Get Instagram account info
-    const instagramInfoResponse = await axios.get(`https://graph.facebook.com/v18.0/${instagramAccountId}`, {
-      params: {
-        access_token: access_token,
-        fields: 'username'
+    // Get Instagram account username
+    let igUsername = instagramAccount.username || instagramAccount.id;
+    try {
+      const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${instagramAccount.id}`, {
+        params: {
+          access_token: pageAccessToken,
+          fields: 'username'
+        }
+      });
+      if (igInfoResponse.data.username) {
+        igUsername = igInfoResponse.data.username;
       }
-    });
+    } catch (igInfoError) {
+      console.error('Error fetching Instagram username:', igInfoError.response?.data || igInfoError.message);
+      // Continue with ID if username fetch fails
+    }
 
-    const platformUserId = instagramAccountId;
-    const platformUsername = instagramInfoResponse.data.username || instagramAccountId;
-
-    // Save account
-    await connectInstagramAccount({
-      userId,
-      accessToken: access_token,
-      platformUserId,
-      platformUsername
-    });
+    // Save Instagram account using findOneAndUpdate with upsert
+    // Use Page's access token (critical for Instagram API calls)
+    await Account.findOneAndUpdate(
+      { 
+        user: userId, 
+        platform: 'instagram' 
+      },
+      {
+        user: userId,
+        platform: 'instagram',
+        platformUserId: instagramAccount.id,
+        platformUsername: igUsername,
+        accessToken: pageAccessToken, // Critical: Use Page's token, not user's
+        isActive: true,
+        lastSync: new Date()
+      },
+      { 
+        upsert: true,
+        new: true
+      }
+    );
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=instagram_connected`);
   } catch (error) {
@@ -454,6 +588,120 @@ export const testLinkedInPost = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to create LinkedIn post',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+// Test route for Facebook post creation
+export const testFacebookPost = async (req, res) => {
+  try {
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        message: 'Text is required'
+      });
+    }
+
+    // Find user's Facebook account
+    const account = await Account.findOne({
+      user: userId,
+      platform: 'facebook',
+      isActive: true
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facebook account not found. Please connect your Facebook account first.'
+      });
+    }
+
+    // Create the post
+    const result = await createFacebookPost(
+      account.accessToken,
+      text
+    );
+
+    res.json({
+      success: true,
+      message: 'Post created successfully',
+      data: result
+    });
+  } catch (error) {
+    console.error('Facebook post creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create Facebook post',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+// Test route for Instagram post creation
+export const testInstagramPost = async (req, res) => {
+  try {
+    const { accessToken, instagramId, imageUrl, caption } = req.body;
+    const userId = req.user._id;
+
+    // If accessToken and instagramId are not provided, try to get from user's account
+    let token = accessToken;
+    let igId = instagramId;
+
+    if (!token || !igId) {
+      // Find user's Instagram account
+      const account = await Account.findOne({
+        user: userId,
+        platform: 'instagram',
+        isActive: true
+      });
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: 'Instagram account not found. Please connect your Instagram account first.'
+        });
+      }
+
+      token = token || account.accessToken;
+      igId = igId || account.platformUserId;
+    }
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'imageUrl is required'
+      });
+    }
+
+    if (!caption) {
+      return res.status(400).json({
+        success: false,
+        message: 'caption is required'
+      });
+    }
+
+    // Create the post
+    const result = await postToInstagram(
+      token,
+      igId,
+      imageUrl,
+      caption
+    );
+
+    res.json({
+      success: true,
+      message: 'Instagram post created successfully',
+      data: result
+    });
+  } catch (error) {
+    console.error('Instagram post creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create Instagram post',
       error: error.response?.data || error.message
     });
   }

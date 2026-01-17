@@ -88,21 +88,44 @@ export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken
 
 // Generate OAuth URLs (for frontend to redirect users)
 export const getFacebookAuthUrl = (userId) => {
+  // Validate FACEBOOK_CLIENT_ID before generating URL
   const clientId = process.env.FACEBOOK_CLIENT_ID;
   if (!clientId) {
     throw new Error('FACEBOOK_CLIENT_ID is not set in environment variables');
   }
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/facebook/callback';
-  const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
+  // Facebook scopes for Social Media Scheduler: comma-separated
+  // Verify scope includes all required permissions (read_insights needed for analytics)
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
-  return `https://www.facebook.com/v18.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
+  // Build query parameters
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: scope,
+    response_type: 'code',
+    state: state,
+    auth_type: 'rerequest', // Force re-authentication to get updated permissions
+    prompt: 'consent' // Request explicit consent for permissions
+  });
+  
+  return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`;
 };
 
 export const getInstagramAuthUrl = (userId) => {
-  // Instagram uses Facebook OAuth
-  return getFacebookAuthUrl(userId);
+  const clientId = process.env.FACEBOOK_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('FACEBOOK_CLIENT_ID is not set in environment variables');
+  }
+  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI || process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/instagram/callback';
+  // Instagram scopes: requires Facebook OAuth with Instagram permissions (read_insights needed for analytics)
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
+  // Encode userId in state parameter
+  const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
+  
+  return `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
 };
 
 export const getLinkedInAuthUrl = (userId) => {
