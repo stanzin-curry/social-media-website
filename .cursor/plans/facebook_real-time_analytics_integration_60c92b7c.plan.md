@@ -348,5 +348,3 @@ sequenceDiagram
 ## Future Enhancements
 
 1. **Auto-refresh:** Periodically refresh analytics (e.g., every 5 minutes)
-2. **Multi-platform:** Extend to Instagram and LinkedIn analytics
-3. **Analytics history:** Store historical analytics data over time

@@ -113,7 +113,3 @@ User edits post → PostDetailModal → API → Reload posts
 - Ensure calendar cells are touch-friendly
 - Make post items visible and clickable on mobile
 - Consider truncation for long captions
-
-## Testing Considerations
-
-- Verify Quick Scheduling pre-fills correct date when clicking different days

@@ -302,6 +302,23 @@ export const postToInstagram = async (accessToken, instagramId, imageUrl, captio
  * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
  */
 export const getPostStats = async (pageId, postId, pageAccessToken) => {
+  // Development/Testing Mode: Return mock data if ENABLE_MOCK_ANALYTICS is set
+  if (process.env.ENABLE_MOCK_ANALYTICS === 'true' || process.env.NODE_ENV === 'development' && process.env.USE_MOCK_ANALYTICS === 'true') {
+    console.log(`[Facebook] Using MOCK analytics data for post ${postId} (Development Mode)`);
+    // Generate realistic mock data with some randomness
+    const baseLikes = Math.floor(Math.random() * 100) + 10;
+    const baseComments = Math.floor(Math.random() * 20) + 2;
+    const baseShares = Math.floor(Math.random() * 15) + 1;
+    const baseReach = Math.floor(baseLikes * (1.5 + Math.random() * 0.5)); // Reach is typically higher than likes
+    
+    return {
+      likes: baseLikes,
+      comments: baseComments,
+      shares: baseShares,
+      reach: baseReach
+    };
+  }
+
   try {
     // First, get basic post stats (likes, comments, shares)
     const postResponse = await axios.get(
