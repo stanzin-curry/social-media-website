@@ -136,18 +136,18 @@ export default function PostDetailModal({ open, onClose, post }) {
   const scheduledDate = post.scheduledDate ? new Date(post.scheduledDate) : null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-4 lg:p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-          <h3 className="text-lg lg:text-xl font-bold text-gray-800">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="p-3 sm:p-4 lg:p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-800">
             {isEditing ? 'Edit Scheduled Post' : 'Post Details'}
           </h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-2">
-            <i className="fas fa-times text-lg lg:text-xl"/>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <i className="fas fa-times text-base sm:text-lg lg:text-xl"/>
           </button>
         </div>
 
-        <div className="p-4 lg:p-6 space-y-4">
+        <div className="p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4">
           {isEditing ? (
             <>
               <div>
@@ -161,15 +161,15 @@ export default function PostDetailModal({ open, onClose, post }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Platforms</label>
-                <div className="flex gap-2 flex-wrap">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Platforms</label>
+                <div className="flex flex-wrap gap-2">
                   {Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).length === 0 ? (
-                    <div className="text-sm text-gray-500 py-4">Connect accounts first to select platforms</div>
+                    <div className="text-xs sm:text-sm text-gray-500 py-3 sm:py-4">Connect accounts first to select platforms</div>
                   ) : Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).map(p => (
                     <button 
                       key={p} 
                       onClick={() => togglePlatform(p)} 
-                      className={`px-3 py-2 border rounded ${selectedPlatforms.includes(p) ? 'bg-green-50 border-green-500 text-green-600' : 'border-gray-300 text-gray-600'}`}
+                      className={`px-3 py-2 border rounded text-xs sm:text-sm min-h-[44px] transition-colors ${selectedPlatforms.includes(p) ? 'bg-green-50 border-green-500 text-green-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
                     >
                       <i className={`fab fa-${p} mr-2`} />{p.charAt(0).toUpperCase() + p.slice(1)}
                     </button>
@@ -246,19 +246,19 @@ export default function PostDetailModal({ open, onClose, post }) {
           )}
         </div>
 
-        <div className="p-4 lg:p-6 border-t border-gray-200 flex gap-3 sticky bottom-0 bg-white">
+        <div className="p-3 sm:p-4 lg:p-6 border-t border-gray-200 flex flex-col sm:flex-row gap-2 sm:gap-3 sticky bottom-0 bg-white">
           {isEditing ? (
             <>
               <button 
                 onClick={handleCancel} 
-                className="flex-1 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-100 rounded-lg hover:bg-gray-200 min-h-[44px] text-sm sm:text-base"
                 disabled={loading}
               >
                 Cancel
               </button>
               <button 
                 onClick={handleUpdate} 
-                className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600"
+                className="flex-1 px-4 py-2.5 sm:py-2 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 min-h-[44px] text-sm sm:text-base"
                 disabled={loading}
               >
                 {loading ? 'Updating...' : 'Update Post'}
@@ -268,14 +268,14 @@ export default function PostDetailModal({ open, onClose, post }) {
             <>
               <button 
                 onClick={handleDelete} 
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                className="px-4 py-2.5 sm:py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 min-h-[44px] text-sm sm:text-base"
                 disabled={loading}
               >
                 <i className="fas fa-trash mr-2" />Delete
               </button>
               <button 
                 onClick={handleEdit} 
-                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600"
+                className="flex-1 px-4 py-2.5 sm:py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 min-h-[44px] text-sm sm:text-base"
               >
                 <i className="fas fa-edit mr-2" />Edit
               </button>

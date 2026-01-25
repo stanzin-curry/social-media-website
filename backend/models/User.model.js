@@ -26,6 +26,26 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['user', 'admin'],
     default: 'user'
+  },
+  fullName: {
+    type: String,
+    trim: true,
+    maxlength: 100
+  },
+  companyName: {
+    type: String,
+    trim: true,
+    maxlength: 100
+  },
+  notificationPreferences: {
+    postPublished: {
+      type: Boolean,
+      default: true
+    },
+    postFailed: {
+      type: Boolean,
+      default: true
+    }
   }
 }, {
   timestamps: true

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 
-export default function Header(){
+export default function Header({ toggleSidebar }){
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -57,12 +57,16 @@ export default function Header(){
   return (
     <header className="bg-white shadow-sm px-4 lg:px-8 py-3 lg:py-4 flex items-center justify-between sticky top-0 z-30">
       <div className="flex items-center gap-3 lg:gap-0 flex-1 min-w-0">
-        <button className="lg:hidden text-gray-600 hover:text-gray-800 p-2" onClick={()=>{ /* sidebar handled in Sidebar with internal state */ }}>
+        <button 
+          className="lg:hidden text-gray-600 hover:text-gray-800 p-2 -ml-2" 
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+        >
           <i className="fas fa-bars text-xl"></i>
         </button>
-        <div className="min-w-0">
-          <h2 className="text-lg lg:text-2xl font-bold text-gray-800 truncate">{t.title}</h2>
-          <p className="text-xs lg:text-sm text-gray-500 hidden sm:block truncate">{t.subtitle}</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 truncate">{t.title}</h2>
+          <p className="text-xs sm:text-sm text-gray-500 hidden sm:block truncate">{t.subtitle}</p>
         </div>
       </div>
 
@@ -88,7 +92,7 @@ export default function Header(){
           </button>
 
           {showDropdown && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+            <div className="absolute right-0 mt-2 w-48 sm:w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
               {user && (
                 <div className="px-4 py-2 border-b border-gray-200">
                   <p className="text-sm font-semibold text-gray-800">{user.username}</p>
@@ -97,7 +101,7 @@ export default function Header(){
               )}
               <button
                 onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition"
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition min-h-[44px] flex items-center"
               >
                 <i className="fas fa-sign-out-alt mr-2"></i>
                 Sign Out

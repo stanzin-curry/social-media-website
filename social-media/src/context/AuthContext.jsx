@@ -88,6 +88,10 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(false)
   }
 
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser)
+  }
+
   const value = {
     user,
     isAuthenticated,
@@ -95,7 +99,8 @@ export function AuthProvider({ children }) {
     login,
     register,
     logout,
-    checkAuth
+    checkAuth,
+    updateUser
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

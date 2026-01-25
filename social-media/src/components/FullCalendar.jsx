@@ -56,43 +56,55 @@ export default function FullCalendar({ onDayClick, onPostClick }) {
 
   return (
     <div>
-      <div className="mb-3 text-sm font-semibold text-gray-700">{monthNames[currentMonth]} {currentYear}</div>
-      <div className="grid grid-cols-7 gap-2">
+      <div className="mb-2 sm:mb-3 text-xs sm:text-sm font-semibold text-gray-700 hidden sm:block">{monthNames[currentMonth]} {currentYear}</div>
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1 md:gap-2 auto-rows-fr">
         {cells.map((c, idx) => (
-          <div key={idx} className={`rounded-lg p-2 min-h-20 ${c.dim ? 'bg-gray-50 text-gray-400' : 'bg-white border-2 hover:border-green-500 cursor-pointer'} ${c.isToday ? 'border-green-500 bg-green-50' : 'border-gray-200'}`} onClick={(e) => handleDayClick(c, e)}>
-            <p className={`text-xs font-semibold ${c.isToday ? 'text-green-700' : ''}`}>{c.num}</p>
-            <div className="space-y-1 mt-2">
-              {c.posts?.map(p => {
-                const postId = p._id || p.id
-                const scheduledDate = p.scheduledDate ? new Date(p.scheduledDate) : null
-                const timeStr = scheduledDate ? scheduledDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
-                const platforms = p.platforms || []
-                const caption = p.caption || ''
-                const captionPreview = caption.length > 20 ? caption.substring(0, 20) + '...' : caption
-                
-                return (
-                  <div 
-                    key={postId} 
-                    className="post-item text-xs bg-gradient-to-r from-orange-400 to-pink-500 text-white px-2 py-1 rounded cursor-pointer hover:from-orange-500 hover:to-pink-600 transition-colors"
-                    onClick={(e) => handlePostClick(p, e)}
-                  >
-                    <div className="flex items-center gap-1 mb-0.5">
-                      {platforms.length > 0 ? (
-                        platforms.slice(0, 2).map((platform, idx) => (
-                          <span key={idx} className="text-[10px]">{getPlatformIcon(platform)}</span>
-                        ))
-                      ) : (
-                        <span className="text-[10px]">{getPlatformIcon('instagram')}</span>
+          <div 
+            key={idx} 
+            className={`rounded sm:rounded-lg p-1 sm:p-2 h-[60px] sm:h-24 md:h-28 flex flex-col ${c.dim ? 'bg-gray-50' : 'bg-white border border-gray-200 sm:border-2 hover:border-green-500 cursor-pointer'} ${c.isToday ? 'border-green-500 bg-green-50' : ''}`} 
+            onClick={(e) => handleDayClick(c, e)}
+          >
+            <p className={`text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
+              c.isToday 
+                ? 'text-green-700' 
+                : c.dim 
+                  ? 'text-gray-500' 
+                  : 'text-gray-800'
+            }`}>{c.num}</p>
+            <div className="flex-1 overflow-y-auto space-y-0.5 sm:space-y-1 mt-1 sm:mt-2 min-h-0 calendar-cell-scroll" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
+              {c.posts && c.posts.length > 0 ? (
+                c.posts.map(p => {
+                  const postId = p._id || p.id
+                  const scheduledDate = p.scheduledDate ? new Date(p.scheduledDate) : null
+                  const timeStr = scheduledDate ? scheduledDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
+                  const platforms = p.platforms || []
+                  const caption = p.caption || ''
+                  const captionPreview = caption.length > 15 ? caption.substring(0, 15) + '...' : caption
+                  
+                  return (
+                    <div 
+                      key={postId} 
+                      className="post-item text-[9px] sm:text-xs bg-gradient-to-r from-orange-400 to-pink-500 text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded cursor-pointer hover:from-orange-500 hover:to-pink-600 transition-colors flex-shrink-0"
+                      onClick={(e) => handlePostClick(p, e)}
+                    >
+                      <div className="flex items-center gap-0.5 sm:gap-1 mb-0 sm:mb-0.5">
+                        {platforms.length > 0 ? (
+                          platforms.slice(0, 2).map((platform, idx) => (
+                            <span key={idx} className="text-[8px] sm:text-[10px]">{getPlatformIcon(platform)}</span>
+                          ))
+                        ) : (
+                          <span className="text-[8px] sm:text-[10px]">{getPlatformIcon('instagram')}</span>
+                        )}
+                        {platforms.length > 2 && <span className="text-[8px] sm:text-[10px]">+{platforms.length - 2}</span>}
+                        <span className="ml-auto text-[8px] sm:text-[10px] font-semibold hidden sm:inline">{timeStr}</span>
+                      </div>
+                      {captionPreview && (
+                        <div className="truncate text-[8px] sm:text-[10px] opacity-90 hidden sm:block">{captionPreview}</div>
                       )}
-                      {platforms.length > 2 && <span className="text-[10px]">+{platforms.length - 2}</span>}
-                      <span className="ml-auto text-[10px] font-semibold">{timeStr}</span>
                     </div>
-                    {captionPreview && (
-                      <div className="truncate text-[10px] opacity-90">{captionPreview}</div>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                })
+              ) : null}
             </div>
           </div>
         ))}
