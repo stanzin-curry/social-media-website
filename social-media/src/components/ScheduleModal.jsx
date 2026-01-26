@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import PageSelector from './PageSelector.jsx'
 
 export default function ScheduleModal({ open, onClose, initialDate, onPostCreated }) {
   const { selectedModalPlatforms, toggleModalPlatform, schedulePostFromModal, connectedAccounts } = useApp()
   const [caption, setCaption] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null })
   const [loading, setLoading] = useState(false)
 
   // Update date when initialDate prop changes (Quick Scheduling)
@@ -21,6 +23,7 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
       setCaption('')
       setDate('')
       setTime('')
+      setSelectedPages({ facebook: null, instagram: null })
       setLoading(false)
     }
   }, [open])
@@ -33,12 +36,13 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
 
     try {
       setLoading(true)
-      await schedulePostFromModal({ caption, date, time, platforms: selectedModalPlatforms })
+      await schedulePostFromModal({ caption, date, time, platforms: selectedModalPlatforms, selectedPages })
       // Success - refresh posts and close modal
       if (onPostCreated) {
         onPostCreated()
       }
       setCaption(''); setDate(''); setTime('')
+      setSelectedPages({ facebook: null, instagram: null })
       onClose?.()
     } catch (err) {
       // Error handling - show alert and keep modal open
@@ -76,6 +80,24 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
               ))}
             </div>
           </div>
+
+          {/* Page Selection for Facebook */}
+          {selectedModalPlatforms.includes('facebook') && (
+            <PageSelector
+              platform="facebook"
+              value={selectedPages.facebook}
+              onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
+            />
+          )}
+
+          {/* Page Selection for Instagram */}
+          {selectedModalPlatforms.includes('instagram') && (
+            <PageSelector
+              platform="instagram"
+              value={selectedPages.instagram}
+              onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
+            />
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             <div>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FaFacebook, FaLinkedin, FaCalendar, FaClock, FaImage } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { postAPI } from "../api/post.api.js";
+import PageSelector from "../components/PageSelector.jsx";
 
 export default function CreatePost() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function CreatePost() {
   const [mediaFile, setMediaFile] = useState(null);
   const [facebookActive, setFacebookActive] = useState(false);
   const [linkedinActive, setLinkedinActive] = useState(false);
+  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null });
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,6 +101,11 @@ export default function CreatePost() {
       formData.append("scheduledDate", date);
       formData.append("scheduledTime", time);
       
+      // Add selectedPages if any pages are selected
+      if (selectedPages.facebook || selectedPages.instagram) {
+        formData.append("selectedPages", JSON.stringify(selectedPages));
+      }
+      
       if (mediaFile) {
         formData.append("media", mediaFile);
       }
@@ -121,6 +128,7 @@ export default function CreatePost() {
         setMediaFile(null);
         setFacebookActive(false);
         setLinkedinActive(false);
+        setSelectedPages({ facebook: null, instagram: null });
         setDate("");
         setTime("");
         
@@ -241,6 +249,15 @@ export default function CreatePost() {
               </button>
             </div>
           </div>
+
+          {/* Page Selection for Facebook */}
+          {facebookActive && (
+            <PageSelector
+              platform="facebook"
+              value={selectedPages.facebook}
+              onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
+            />
+          )}
 
           {/* Scheduling */}
           <div>

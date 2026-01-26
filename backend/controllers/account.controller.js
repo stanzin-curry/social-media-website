@@ -207,3 +207,54 @@ export const refreshAccountToken = async (req, res) => {
   }
 };
 
+export const getFacebookPages = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Find user's Facebook account
+    const facebookAccount = await Account.findOne({
+      user: userId,
+      platform: 'facebook',
+      isActive: true
+    });
+
+    if (!facebookAccount) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facebook account not found. Please connect your Facebook account first.'
+      });
+    }
+
+    // Extract pages and Instagram accounts
+    const pages = facebookAccount.pages || [];
+    const instagramAccounts = [];
+
+    // Collect all Instagram accounts from pages
+    pages.forEach(page => {
+      if (page.instagramAccount && page.instagramAccount.id) {
+        instagramAccounts.push({
+          id: page.instagramAccount.id,
+          username: page.instagramAccount.username || page.instagramAccount.id,
+          pageId: page.id,
+          pageName: page.name
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      pages: pages.map(page => ({
+        id: page.id,
+        name: page.name,
+        hasInstagram: !!page.instagramAccount
+      })),
+      instagramAccounts
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch Facebook pages'
+    });
+  }
+};
+

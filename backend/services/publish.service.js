@@ -1,6 +1,6 @@
 import Post from '../models/Post.model.js';
 import Account from '../models/Account.model.js';
-import { postToFacebook } from './facebook.service.js';
+import { postToFacebook, publishToFacebook } from './facebook.service.js';
 import { publishToInstagram } from './instagram.service.js';
 import { publishToLinkedIn } from './linkedin.service.js';
 import { fileURLToPath } from 'url';
@@ -44,26 +44,90 @@ export const publishPost = async (post) => {
 
       switch (platform) {
         case 'facebook':
-          // Use postToFacebook which fetches pages and uses Page Access Token
-          // account.accessToken is the user's token, which will be used to fetch pages
-          // postToFacebook will extract the Page Access Token and post to the page
-          // Note: account.platformUserId is the user's Facebook ID, not the page ID
-          // So we pass null to use the first available page
-          publishResult = await postToFacebook(
-            account.accessToken,  // User's access token (used to fetch pages)
-            post.caption,         // Post message
-            mediaUrl,             // Optional media URL
-            null                  // Use first available page (account.platformUserId is user ID, not page ID)
-          );
+          // Check if a specific page was selected
+          if (post.selectedPages && post.selectedPages.facebook) {
+            // Find the Facebook account to get pages
+            const facebookAccount = await Account.findOne({
+              user: post.user,
+              platform: 'facebook',
+              isActive: true
+            });
+
+            if (!facebookAccount || !facebookAccount.pages || facebookAccount.pages.length === 0) {
+              throw new Error('No Facebook pages found. Please reconnect your Facebook account.');
+            }
+
+            // Find the selected page
+            const selectedPage = facebookAccount.pages.find(
+              page => page.id === post.selectedPages.facebook
+            );
+
+            if (!selectedPage) {
+              throw new Error(`Selected Facebook page (${post.selectedPages.facebook}) not found.`);
+            }
+
+            // Use the page's access token directly via publishToFacebook
+            publishResult = await publishToFacebook(
+              selectedPage.accessToken,
+              selectedPage.id,
+              post.caption,
+              mediaUrl
+            );
+            publishResult.pageId = selectedPage.id;
+          } else {
+            // Use postToFacebook which fetches pages and uses Page Access Token
+            // account.accessToken is the user's token, which will be used to fetch pages
+            // postToFacebook will extract the Page Access Token and post to the page
+            // Note: account.platformUserId is the user's Facebook ID, not the page ID
+            // So we pass null to use the first available page
+            publishResult = await postToFacebook(
+              account.accessToken,  // User's access token (used to fetch pages)
+              post.caption,         // Post message
+              mediaUrl,             // Optional media URL
+              null                  // Use first available page (account.platformUserId is user ID, not page ID)
+            );
+          }
           break;
 
         case 'instagram':
-          publishResult = await publishToInstagram(
-            account.accessToken,
-            account.platformUserId,
-            post.caption,
-            mediaUrl
-          );
+          // Check if a specific Instagram account was selected
+          if (post.selectedPages && post.selectedPages.instagram) {
+            // Find the Facebook account to get pages with Instagram accounts
+            const facebookAccount = await Account.findOne({
+              user: post.user,
+              platform: 'facebook',
+              isActive: true
+            });
+
+            if (!facebookAccount || !facebookAccount.pages || facebookAccount.pages.length === 0) {
+              throw new Error('No Facebook pages found. Please reconnect your Facebook account.');
+            }
+
+            // Find the page that has the selected Instagram account
+            const pageWithInstagram = facebookAccount.pages.find(
+              page => page.instagramAccount && page.instagramAccount.id === post.selectedPages.instagram
+            );
+
+            if (!pageWithInstagram || !pageWithInstagram.instagramAccount) {
+              throw new Error(`Selected Instagram account (${post.selectedPages.instagram}) not found.`);
+            }
+
+            // Use the page's access token (required for Instagram API)
+            publishResult = await publishToInstagram(
+              pageWithInstagram.accessToken,
+              pageWithInstagram.instagramAccount.id,
+              post.caption,
+              mediaUrl
+            );
+          } else {
+            // Use default Instagram account
+            publishResult = await publishToInstagram(
+              account.accessToken,
+              account.platformUserId,
+              post.caption,
+              mediaUrl
+            );
+          }
           break;
 
         case 'linkedin':

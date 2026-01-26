@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { postAPI } from '../api/post.api.js'
+import PageSelector from './PageSelector.jsx'
 
 export default function PostDetailModal({ open, onClose, post }) {
   const { loadPosts, addNotification, connectedAccounts } = useApp()
@@ -9,6 +10,7 @@ export default function PostDetailModal({ open, onClose, post }) {
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [selectedPlatforms, setSelectedPlatforms] = useState([])
+  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null })
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -21,6 +23,8 @@ export default function PostDetailModal({ open, onClose, post }) {
       }
       // Initialize selected platforms from post
       setSelectedPlatforms(post.platforms || [])
+      // Initialize selected pages from post
+      setSelectedPages(post.selectedPages || { facebook: null, instagram: null })
     }
   }, [post])
 
@@ -48,6 +52,7 @@ export default function PostDetailModal({ open, onClose, post }) {
         setTime(scheduledDate.toTimeString().slice(0, 5))
       }
       setSelectedPlatforms(post.platforms || [])
+      setSelectedPages(post.selectedPages || { facebook: null, instagram: null })
     }
   }
 
@@ -63,7 +68,8 @@ export default function PostDetailModal({ open, onClose, post }) {
         caption,
         scheduledDate: date,
         scheduledTime: time,
-        platforms: selectedPlatforms
+        platforms: selectedPlatforms,
+        selectedPages
       })
 
       if (response.success) {
@@ -176,6 +182,24 @@ export default function PostDetailModal({ open, onClose, post }) {
                   ))}
                 </div>
               </div>
+
+              {/* Page Selection for Facebook */}
+              {selectedPlatforms.includes('facebook') && (
+                <PageSelector
+                  platform="facebook"
+                  value={selectedPages.facebook}
+                  onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
+                />
+              )}
+
+              {/* Page Selection for Instagram */}
+              {selectedPlatforms.includes('instagram') && (
+                <PageSelector
+                  platform="instagram"
+                  value={selectedPages.instagram}
+                  onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
+                />
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

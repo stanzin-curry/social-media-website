@@ -40,7 +40,25 @@ const accountSchema = new mongoose.Schema({
   lastSync: {
     type: Date,
     default: Date.now
-  }
+  },
+  pages: [{
+    id: {
+      type: String,
+      required: true
+    },
+    name: {
+      type: String,
+      required: true
+    },
+    accessToken: {
+      type: String,
+      required: true
+    },
+    instagramAccount: {
+      id: String,
+      username: String
+    }
+  }]
 }, {
   timestamps: true
 });

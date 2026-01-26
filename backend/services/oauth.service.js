@@ -2,7 +2,7 @@ import Account from '../models/Account.model.js';
 import axios from 'axios';
 
 // Facebook/Instagram OAuth connection
-export const connectFacebookAccount = async ({ userId, accessToken, platformUserId, platformUsername }) => {
+export const connectFacebookAccount = async ({ userId, accessToken, platformUserId, platformUsername, pages = [] }) => {
   // Check if account already exists
   let account = await Account.findOne({ user: userId, platform: 'facebook' });
   
@@ -12,6 +12,10 @@ export const connectFacebookAccount = async ({ userId, accessToken, platformUser
     account.platformUsername = platformUsername;
     account.isActive = true;
     account.lastSync = new Date();
+    // Update pages array if provided
+    if (pages && pages.length > 0) {
+      account.pages = pages;
+    }
     await account.save();
     return account;
   }
@@ -22,6 +26,7 @@ export const connectFacebookAccount = async ({ userId, accessToken, platformUser
     platformUserId,
     platformUsername,
     accessToken,
+    pages: pages || [],
     isActive: true
   });
 
@@ -96,7 +101,8 @@ export const getFacebookAuthUrl = (userId) => {
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/facebook/callback';
   // Facebook scopes for Social Media Scheduler: comma-separated
   // Verify scope includes all required permissions (read_insights needed for analytics)
-  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
+  // business_management is required to access all pages the user manages
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish,business_management';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
@@ -121,7 +127,8 @@ export const getInstagramAuthUrl = (userId) => {
   }
   const redirectUri = process.env.INSTAGRAM_REDIRECT_URI || process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:4000/api/auth/instagram/callback';
   // Instagram scopes: requires Facebook OAuth with Instagram permissions (read_insights needed for analytics)
-  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish';
+  // business_management is required to access all pages the user manages
+  const scope = 'email,public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,instagram_basic,instagram_content_publish,business_management';
   // Encode userId in state parameter
   const state = userId ? Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64') : Date.now().toString();
   
