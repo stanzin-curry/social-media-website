@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaFacebook, FaLinkedin, FaCalendar, FaClock, FaImage } from "react-icons/fa";
+import { FaFacebook, FaLinkedin, FaInstagram, FaCalendar, FaClock, FaImage } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { postAPI } from "../api/post.api.js";
 import PageSelector from "../components/PageSelector.jsx";
@@ -14,6 +14,7 @@ export default function CreatePost() {
   const [mediaFile, setMediaFile] = useState(null);
   const [facebookActive, setFacebookActive] = useState(false);
   const [linkedinActive, setLinkedinActive] = useState(false);
+  const [instagramActive, setInstagramActive] = useState(false);
   const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null });
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
@@ -74,6 +75,7 @@ export default function CreatePost() {
     const platforms = [];
     if (facebookActive) platforms.push("facebook");
     if (linkedinActive) platforms.push("linkedin");
+    if (instagramActive) platforms.push("instagram");
 
     if (platforms.length === 0) {
       setError("Please select at least one platform");
@@ -128,6 +130,7 @@ export default function CreatePost() {
         setMediaFile(null);
         setFacebookActive(false);
         setLinkedinActive(false);
+        setInstagramActive(false);
         setSelectedPages({ facebook: null, instagram: null });
         setDate("");
         setTime("");
@@ -150,6 +153,7 @@ export default function CreatePost() {
   const selectedPlatforms = [];
   if (facebookActive) selectedPlatforms.push("facebook");
   if (linkedinActive) selectedPlatforms.push("linkedin");
+  if (instagramActive) selectedPlatforms.push("instagram");
 
   return (
     <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 sm:gap-6">
@@ -247,6 +251,18 @@ export default function CreatePost() {
                 <FaLinkedin />
                 LinkedIn
               </button>
+              <button
+                type="button"
+                onClick={() => setInstagramActive(!instagramActive)}
+                className={`flex-1 min-w-[120px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors min-h-[44px] text-xs sm:text-sm ${
+                  instagramActive
+                    ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                    : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                }`}
+              >
+                <FaInstagram />
+                Instagram
+              </button>
             </div>
           </div>
 
@@ -256,6 +272,15 @@ export default function CreatePost() {
               platform="facebook"
               value={selectedPages.facebook}
               onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
+            />
+          )}
+
+          {/* Page Selection for Instagram */}
+          {instagramActive && (
+            <PageSelector
+              platform="instagram"
+              value={selectedPages.instagram}
+              onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
             />
           )}
 
@@ -319,19 +344,35 @@ export default function CreatePost() {
             {selectedPlatforms.map((platform) => (
               <div
                 key={platform}
-                className="w-full max-w-md mx-auto bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden"
+                className={`w-full max-w-md mx-auto bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden ${
+                  platform === 'instagram' ? 'border-pink-200' : ''
+                }`}
               >
-                {/* Facebook-style header */}
-                <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border-b border-gray-200">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm flex-shrink-0">
-                    {getInitials()}
+                {/* Platform-specific header */}
+                <div className={`flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border-b ${
+                  platform === 'instagram' 
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-pink-300' 
+                    : 'border-gray-200'
+                }`}>
+                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 ${
+                    platform === 'instagram'
+                      ? 'bg-white text-pink-500'
+                      : platform === 'facebook'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-700 text-white'
+                  }`}>
+                    {platform === 'instagram' ? <FaInstagram /> : getInitials()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-800 text-xs sm:text-sm truncate">
-                      {user?.username || "Your Name"}
+                    <p className={`font-semibold text-xs sm:text-sm truncate ${
+                      platform === 'instagram' ? 'text-white' : 'text-gray-800'
+                    }`}>
+                      {platform === 'instagram' ? '@your_account' : user?.username || "Your Name"}
                     </p>
-                    <p className="text-[10px] sm:text-xs text-gray-500 truncate">
-                      Just now · <span className="text-blue-600">{platform}</span>
+                    <p className={`text-[10px] sm:text-xs truncate ${
+                      platform === 'instagram' ? 'text-white/80' : 'text-gray-500'
+                    }`}>
+                      Just now · <span className={platform === 'instagram' ? 'text-white' : 'text-blue-600'}>{platform}</span>
                     </p>
                   </div>
                 </div>

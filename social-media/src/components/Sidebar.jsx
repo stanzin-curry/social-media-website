@@ -1,7 +1,20 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 export default function Sidebar({ open, toggle }) {
+  const { user } = useAuth()
+
+  // Get user initials for avatar
+  const getInitials = () => {
+    if (user?.username) {
+      return user.username.substring(0, 2).toUpperCase()
+    }
+    if (user?.email) {
+      return user.email.substring(0, 2).toUpperCase()
+    }
+    return 'U'
+  }
 
   const linkClass = ({ isActive }) =>
     `nav-link flex items-center gap-2 sm:gap-3 px-3 lg:px-4 py-2 sm:py-3 rounded-lg text-gray-700 hover:bg-gray-100 mb-2 min-h-[44px] transition-colors
@@ -84,12 +97,16 @@ export default function Sidebar({ open, toggle }) {
         <div className="p-2 sm:p-3 lg:p-4 border-t border-gray-200">
           <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 lg:px-4 py-2 sm:py-3">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-green-400 to-orange-400 flex items-center justify-center text-white font-semibold text-xs sm:text-sm flex-shrink-0">
-              JD
+              {getInitials()}
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm font-semibold text-gray-800 truncate">rudr motu</p>
-              <p className="text-[10px] sm:text-xs text-gray-500 truncate">john@example.com</p>
+              <p className="text-xs sm:text-sm font-semibold text-gray-800 truncate">
+                {user?.username || 'User'}
+              </p>
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                {user?.email || 'No email'}
+              </p>
             </div>
           </div>
         </div>
