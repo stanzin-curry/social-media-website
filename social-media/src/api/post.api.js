@@ -19,6 +19,9 @@ export const postAPI = {
         formData.append('mediaUrl', postData.media);
       }
     }
+    if (postData.selectedPages) {
+      formData.append('selectedPages', JSON.stringify(postData.selectedPages));
+    }
 
     const response = await api.post('/posts', formData, {
       headers: {
@@ -56,6 +59,9 @@ export const postAPI = {
     if (postData.scheduledTime) formData.append('scheduledTime', postData.scheduledTime);
     if (postData.media instanceof File) {
       formData.append('media', postData.media);
+    }
+    if (postData.selectedPages) {
+      formData.append('selectedPages', JSON.stringify(postData.selectedPages));
     }
 
     const response = await api.put(`/posts/${id}`, formData, {

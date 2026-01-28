@@ -51,55 +51,58 @@ export const postToFacebook = async (userAccessToken, message, mediaUrl = null, 
 
     // Step 5: Post to Facebook using Page Access Token
     if (mediaUrl) {
-      let imageUrl = mediaUrl;
-      let filePath = null;
-
-      // Check if mediaUrl is a local file path or a URL
-      if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
-        // It's already a full URL - use it directly
-        imageUrl = mediaUrl;
-        console.log('[Facebook] Using provided URL:', imageUrl);
-      } else {
-        // It's a local file path (e.g., "/uploads/image.jpg" or "uploads/image.jpg")
-        // Clean up the path - remove leading slashes/backslashes
-        const cleanPath = mediaUrl.replace(/^[/\\]+/, '');
+      let photoResponse;
+      
+      // Check if mediaUrl is a localhost URL or local file path
+      const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || (!mediaUrl.startsWith('http'));
+      
+      if (isLocalhost || !mediaUrl.startsWith('http')) {
+        // Local file - read and upload directly using FormData
+        let filePath;
+        if (mediaUrl.startsWith('http')) {
+          // Extract path from localhost URL and decode URL-encoded characters
+          const urlObj = new URL(mediaUrl);
+          const decodedPath = decodeURIComponent(urlObj.pathname);
+          filePath = path.join(process.cwd(), decodedPath);
+        } else {
+          // It's already a file path - decode URL-encoded characters
+          const cleanPath = mediaUrl.replace(/^[/\\]+/, '');
+          const decodedPath = decodeURIComponent(cleanPath);
+          filePath = path.join(process.cwd(), decodedPath);
+        }
         
-        // Construct absolute file path using process.cwd()
-        filePath = path.join(process.cwd(), cleanPath);
+        console.log('[Facebook] Uploading local file:', filePath);
         
-        // Debug log BEFORE checking file existence
-        console.log('[Facebook] Looking for file at:', filePath);
-        console.log('[Facebook] Original mediaUrl:', mediaUrl);
-        console.log('[Facebook] Cleaned path:', cleanPath);
-        console.log('[Facebook] Process CWD:', process.cwd());
-        
-        // Check if file exists
         if (!fs.existsSync(filePath)) {
           throw new Error(`File not found at: ${filePath}. Original path: ${mediaUrl}`);
         }
         
-        console.log('[Facebook] File found! File size:', fs.statSync(filePath).size, 'bytes');
+        // Read file and upload using FormData
+        const fileStream = fs.createReadStream(filePath);
+        const formData = new FormData();
+        formData.append('source', fileStream);
+        formData.append('message', message);
+        formData.append('access_token', pageAccessToken);
         
-        // Construct the full URL using BACKEND_URL
-        // Note: Facebook's servers cannot access localhost URLs
-        // For production, ensure BACKEND_URL is publicly accessible
-        const baseUrl = process.env.BACKEND_URL || 'http://localhost:4000';
-        imageUrl = `${baseUrl}/${cleanPath}`;
-        
-        console.log('[Facebook] Using image URL:', imageUrl);
-        console.log('[Facebook] WARNING: If BACKEND_URL is localhost, Facebook cannot access it. Use a publicly accessible URL in production.');
+        photoResponse = await axios.post(
+          `https://graph.facebook.com/v19.0/${pageId}/photos`,
+          formData,
+          {
+            headers: formData.getHeaders()
+          }
+        );
+      } else {
+        // Public URL - use it directly
+        console.log('[Facebook] Using public URL:', mediaUrl);
+        photoResponse = await axios.post(
+          `https://graph.facebook.com/v19.0/${pageId}/photos`,
+          {
+            url: mediaUrl,
+            caption: message,
+            access_token: pageAccessToken // CRITICAL: Use Page Access Token, not User Token
+          }
+        );
       }
-
-      // Image post: POST to /{pageId}/photos
-      // Facebook API requires a publicly accessible URL
-      const photoResponse = await axios.post(
-        `https://graph.facebook.com/v19.0/${pageId}/photos`,
-        {
-          url: imageUrl,
-          caption: message,
-          access_token: pageAccessToken // CRITICAL: Use Page Access Token, not User Token
-        }
-      );
 
       return {
         success: true,
@@ -147,15 +150,55 @@ export const postToFacebook = async (userAccessToken, message, mediaUrl = null, 
 export const publishToFacebook = async (accessToken, pageId, message, mediaUrl = null) => {
   try {
     if (mediaUrl) {
-      // First, upload the photo
-      const photoResponse = await axios.post(
-        `https://graph.facebook.com/v19.0/${pageId}/photos`,
-        {
-          url: mediaUrl,
-          caption: message,
-          access_token: accessToken
+      let photoResponse;
+      
+      // Check if mediaUrl is a localhost URL or local file path
+      const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || (!mediaUrl.startsWith('http'));
+      
+      if (isLocalhost || !mediaUrl.startsWith('http')) {
+        // Local file - read and upload directly using FormData
+        let filePath;
+        if (mediaUrl.startsWith('http')) {
+          // Extract path from localhost URL and decode URL-encoded characters
+          const urlObj = new URL(mediaUrl);
+          const decodedPath = decodeURIComponent(urlObj.pathname);
+          filePath = path.join(process.cwd(), decodedPath);
+        } else {
+          // It's already a file path - decode URL-encoded characters
+          const cleanPath = mediaUrl.replace(/^[/\\]+/, '');
+          const decodedPath = decodeURIComponent(cleanPath);
+          filePath = path.join(process.cwd(), decodedPath);
         }
-      );
+        
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found at: ${filePath}`);
+        }
+        
+        // Read file and upload using FormData
+        const fileStream = fs.createReadStream(filePath);
+        const formData = new FormData();
+        formData.append('source', fileStream);
+        formData.append('message', message);
+        formData.append('access_token', accessToken);
+        
+        photoResponse = await axios.post(
+          `https://graph.facebook.com/v19.0/${pageId}/photos`,
+          formData,
+          {
+            headers: formData.getHeaders()
+          }
+        );
+      } else {
+        // Public URL - use it directly
+        photoResponse = await axios.post(
+          `https://graph.facebook.com/v19.0/${pageId}/photos`,
+          {
+            url: mediaUrl,
+            caption: message,
+            access_token: accessToken
+          }
+        );
+      }
 
       return {
         success: true,

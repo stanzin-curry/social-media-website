@@ -163,7 +163,7 @@ export function AppProvider({ children }) {
 
   const clearAllNotifications = () => setNotifications([])
 
-  const schedulePost = async ({ caption, date, time, platforms, media }) => {
+  const schedulePost = async ({ caption, date, time, platforms, media, selectedPages }) => {
     if (!caption || !date || !time || !platforms?.length) {
       throw new Error('Please fill in all fields and select at least one platform')
     }
@@ -196,7 +196,8 @@ export function AppProvider({ children }) {
         scheduledDate: date,
         scheduledTime: time,
         platforms: [...platforms],
-        media: mediaFile
+        media: mediaFile,
+        selectedPages
       })
 
       if (response.success) {
@@ -217,8 +218,8 @@ export function AppProvider({ children }) {
     await loadPosts()
   }
 
-  const schedulePostFromModal = async ({ caption, date, time, platforms }) => {
-    await schedulePost({ caption, date, time, platforms })
+  const schedulePostFromModal = async ({ caption, date, time, platforms, selectedPages }) => {
+    await schedulePost({ caption, date, time, platforms, selectedPages })
   }
 
   const deletePost = async (postId) => {
@@ -242,7 +243,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  const updatePost = async (postId, { caption, date, time, platforms, media }) => {
+  const updatePost = async (postId, { caption, date, time, platforms, media, selectedPages }) => {
     if (!caption || !date || !time || !platforms?.length) {
       throw new Error('Please fill in all fields and select at least one platform')
     }
@@ -275,7 +276,8 @@ export function AppProvider({ children }) {
         scheduledDate: date,
         scheduledTime: time,
         platforms: [...platforms],
-        media: mediaFile
+        media: mediaFile,
+        selectedPages
       })
 
       if (response.success) {

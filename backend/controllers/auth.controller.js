@@ -267,38 +267,20 @@ export const facebookCallback = async (req, res) => {
     // Debug: Log token received
     console.log("🔍 Token received. Fetching pages...");
 
-    // Fetch user's Pages immediately after getting access token
+    // Debug: Check token scopes
     try {
-      const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+      const debugTokenResponse = await axios.get('https://graph.facebook.com/v19.0/debug_token', {
         params: {
-          fields: 'name,access_token,id,instagram_business_account',
-          access_token: access_token
+          input_token: access_token,
+          access_token: `${process.env.FACEBOOK_CLIENT_ID}|${process.env.FACEBOOK_CLIENT_SECRET}`
         }
       });
-      
-      const pagesData = pagesResponse.data.data || [];
-      const pagesCount = pagesData.length;
-      
-      console.log("📄 Pages found in Callback:", pagesCount);
-      
-      if (pagesCount === 0) {
-        console.warn("⚠️ No pages found. User might need to 'Reconnect' and select pages.");
-      } else {
-        console.log('=== Facebook Pages Response (Verification) ===');
-        console.log('Pages data:', JSON.stringify(pagesResponse.data, null, 2));
-        console.log('=== End Facebook Pages Response ===');
-        
-        // Check for Instagram Business Account IDs
-        for (const page of pagesData) {
-          if (page.instagram_business_account) {
-            console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
-          }
-        }
-      }
-    } catch (pagesError) {
-      console.error('Error fetching Facebook Pages:', pagesError.response?.data || pagesError.message);
-      console.warn("⚠️ No pages found. User might need to 'Reconnect' and select pages.");
-      // Continue with account save even if Pages fetch fails
+      console.log('=== Token Debug Info ===');
+      console.log('Token scopes:', debugTokenResponse.data.data?.scopes);
+      console.log('Token user ID:', debugTokenResponse.data.data?.user_id);
+      console.log('=== End Token Debug ===');
+    } catch (debugError) {
+      console.warn('Could not debug token:', debugError.message);
     }
 
     // Get user profile
@@ -313,33 +295,76 @@ export const facebookCallback = async (req, res) => {
     const platformUserId = profile.id;
     const platformUsername = profile.name || profile.email || profile.id;
 
-    // Save Facebook account
-    await connectFacebookAccount({
-      userId,
-      accessToken: access_token,
-      platformUserId,
-      platformUsername
-    });
-
     // Fetch user's Pages with Instagram Business Account details
+    let pagesArray = [];
     try {
-      const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-        params: {
-          fields: 'name,access_token,id,instagram_business_account',
-          access_token: access_token
+      // Fetch all pages with pagination support
+      let allPages = [];
+      let nextUrl = null;
+      let hasMore = true;
+      let pageCount = 0;
+      
+      while (hasMore) {
+        let pagesResponse;
+        
+        if (nextUrl) {
+          // Follow pagination URL (already contains all parameters)
+          pagesResponse = await axios.get(nextUrl);
+        } else {
+          // First request - use params
+          pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+            params: {
+              fields: 'name,access_token,id,instagram_business_account',
+              access_token: access_token,
+              limit: 100 // Request up to 100 pages per request
+            }
+          });
         }
-      });
 
-      const pages = pagesResponse.data.data || [];
+        const pages = pagesResponse.data.data || [];
+        allPages = allPages.concat(pages);
+        pageCount++;
+        
+        console.log(`📄 Fetched page ${pageCount}: ${pages.length} pages (Total so far: ${allPages.length})`);
+        
+        // Check if there are more pages
+        if (pagesResponse.data.paging && pagesResponse.data.paging.next) {
+          nextUrl = pagesResponse.data.paging.next;
+        } else {
+          hasMore = false;
+        }
+      }
       
       console.log('=== Facebook Pages Response ===');
-      console.log('Pages found:', pages.length);
-      console.log('Pages data:', JSON.stringify(pagesResponse.data, null, 2));
+      console.log('Total pages found:', allPages.length);
+      console.log('Pages data:', JSON.stringify({
+        data: allPages.map(p => ({ id: p.id, name: p.name })),
+        total: allPages.length
+      }, null, 2));
       console.log('=== End Facebook Pages Response ===');
 
-      // Find the first page with an Instagram Business Account
-      if (pages && pages.length > 0) {
-        for (const page of pages) {
+      // Map pages to the format needed for Account.pages array
+      pagesArray = allPages.map(page => {
+        const pageData = {
+          id: page.id,
+          name: page.name,
+          accessToken: page.access_token
+        };
+
+        // Include Instagram Business Account if available
+        if (page.instagram_business_account) {
+          pageData.instagramAccount = {
+            id: page.instagram_business_account.id,
+            username: page.instagram_business_account.username || null
+          };
+        }
+
+        return pageData;
+      });
+
+      // Find the first page with an Instagram Business Account and save it separately
+      if (allPages && allPages.length > 0) {
+        for (const page of allPages) {
           if (page.instagram_business_account) {
             console.log("📸 Found Instagram Business ID: " + page.instagram_business_account.id);
             const igAccount = page.instagram_business_account;
@@ -390,8 +415,18 @@ export const facebookCallback = async (req, res) => {
       }
     } catch (pagesError) {
       console.error('Error fetching Facebook Pages or Instagram accounts:', pagesError.response?.data || pagesError.message);
-      // Continue even if Pages/IG fetch fails - Facebook account is already saved
+      console.warn("⚠️ No pages found. User might need to 'Reconnect' and select pages.");
+      // Continue with account save even if Pages fetch fails
     }
+
+    // Save Facebook account with pages array
+    await connectFacebookAccount({
+      userId,
+      accessToken: access_token,
+      platformUserId,
+      platformUsername,
+      pages: pagesArray
+    });
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=facebook_connected`);
   } catch (error) {
@@ -463,16 +498,40 @@ export const instagramCallback = async (req, res) => {
 
     const { access_token } = tokenResponse.data;
 
-    // Fetch pages with Instagram Business Account details
-    const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-      params: {
-        fields: 'access_token,name,instagram_business_account',
-        access_token: access_token
+    // Fetch pages with Instagram Business Account details (with pagination support)
+    let allPages = [];
+    let nextUrl = null;
+    let hasMore = true;
+    
+    while (hasMore) {
+      let pagesResponse;
+      
+      if (nextUrl) {
+        // Follow pagination URL (already contains all parameters)
+        pagesResponse = await axios.get(nextUrl);
+      } else {
+        // First request - use params
+        pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+          params: {
+            fields: 'access_token,name,instagram_business_account',
+            access_token: access_token,
+            limit: 100
+          }
+        });
       }
-    });
 
-    const pages = pagesResponse.data.data || [];
-    if (!pages || pages.length === 0) {
+      const pages = pagesResponse.data.data || [];
+      allPages = allPages.concat(pages);
+      
+      // Check if there are more pages
+      if (pagesResponse.data.paging && pagesResponse.data.paging.next) {
+        nextUrl = pagesResponse.data.paging.next;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    if (!allPages || allPages.length === 0) {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=no_facebook_page`);
     }
 
@@ -481,7 +540,7 @@ export const instagramCallback = async (req, res) => {
     let pageAccessToken = null;
     let pageName = null;
 
-    for (const page of pages) {
+    for (const page of allPages) {
       if (page.instagram_business_account) {
         instagramAccount = page.instagram_business_account;
         pageAccessToken = page.access_token; // Critical: Use Page's token, not user's

@@ -20,6 +20,10 @@ const postSchema = new mongoose.Schema({
     enum: ['instagram', 'facebook', 'linkedin'],
     required: true
   }],
+  selectedPages: {
+    facebook: String,    // Selected Facebook Page ID
+    instagram: String    // Selected Instagram Account ID
+  },
   scheduledDate: {
     type: Date,
     required: true

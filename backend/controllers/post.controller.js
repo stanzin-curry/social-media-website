@@ -51,12 +51,70 @@ export const createPostFromCreateEndpoint = async (req, res) => {
       platformsArray = [platformsArray];
     }
 
+    // Parse and validate selectedPages if provided
+    let selectedPages = {};
+    if (req.body.selectedPages) {
+      try {
+        const parsedSelectedPages = typeof req.body.selectedPages === 'string' 
+          ? JSON.parse(req.body.selectedPages) 
+          : req.body.selectedPages;
+        
+        // Validate selected pages exist in user's Account
+        if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+          const facebookAccount = await Account.findOne({
+            user: userId,
+            platform: 'facebook',
+            isActive: true
+          });
+
+          if (facebookAccount && facebookAccount.pages && facebookAccount.pages.length > 0) {
+            // Validate Facebook page selection
+            if (parsedSelectedPages.facebook) {
+              const pageExists = facebookAccount.pages.some(
+                page => page.id === parsedSelectedPages.facebook
+              );
+              if (!pageExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Facebook page (${parsedSelectedPages.facebook}) not found in your connected pages`
+                });
+              }
+              selectedPages.facebook = parsedSelectedPages.facebook;
+            }
+
+            // Validate Instagram account selection
+            if (parsedSelectedPages.instagram) {
+              const instagramExists = facebookAccount.pages.some(
+                page => page.instagramAccount && page.instagramAccount.id === parsedSelectedPages.instagram
+              );
+              if (!instagramExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Instagram account (${parsedSelectedPages.instagram}) not found in your connected accounts`
+                });
+              }
+              selectedPages.instagram = parsedSelectedPages.instagram;
+            }
+          } else if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+            return res.status(400).json({
+              success: false,
+              message: 'No Facebook pages found. Please reconnect your Facebook account.'
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing selectedPages:', e);
+        // Continue without selectedPages if parsing fails
+      }
+    }
+
     // Create post with mapped field names
     const post = await Post.create({
       user: userId, // Map userId to user (existing model field)
       caption: content, // Map content to caption (existing model field)
       media: mediaUrl, // Map mediaUrl to media (existing model field)
       platforms: platformsArray,
+      selectedPages: Object.keys(selectedPages).length > 0 ? selectedPages : undefined,
       scheduledDate: scheduledAt, // Map scheduledAt to scheduledDate (existing model field)
       status: 'scheduled' // Default status is SCHEDULED (lowercase for existing model)
     });
@@ -116,11 +174,69 @@ export const createPost = async (req, res) => {
       platformsArray = [platformsArray];
     }
 
+    // Parse and validate selectedPages if provided
+    let selectedPages = {};
+    if (req.body.selectedPages) {
+      try {
+        const parsedSelectedPages = typeof req.body.selectedPages === 'string' 
+          ? JSON.parse(req.body.selectedPages) 
+          : req.body.selectedPages;
+        
+        // Validate selected pages exist in user's Account
+        if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+          const facebookAccount = await Account.findOne({
+            user: userId,
+            platform: 'facebook',
+            isActive: true
+          });
+
+          if (facebookAccount && facebookAccount.pages && facebookAccount.pages.length > 0) {
+            // Validate Facebook page selection
+            if (parsedSelectedPages.facebook) {
+              const pageExists = facebookAccount.pages.some(
+                page => page.id === parsedSelectedPages.facebook
+              );
+              if (!pageExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Facebook page (${parsedSelectedPages.facebook}) not found in your connected pages`
+                });
+              }
+              selectedPages.facebook = parsedSelectedPages.facebook;
+            }
+
+            // Validate Instagram account selection
+            if (parsedSelectedPages.instagram) {
+              const instagramExists = facebookAccount.pages.some(
+                page => page.instagramAccount && page.instagramAccount.id === parsedSelectedPages.instagram
+              );
+              if (!instagramExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Instagram account (${parsedSelectedPages.instagram}) not found in your connected accounts`
+                });
+              }
+              selectedPages.instagram = parsedSelectedPages.instagram;
+            }
+          } else if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+            return res.status(400).json({
+              success: false,
+              message: 'No Facebook pages found. Please reconnect your Facebook account.'
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing selectedPages:', e);
+        // Continue without selectedPages if parsing fails
+      }
+    }
+
     const post = await Post.create({
       user: userId,
       caption,
       media: mediaUrl, // Can be null for text-only posts
       platforms: platformsArray,
+      selectedPages: Object.keys(selectedPages).length > 0 ? selectedPages : undefined,
       scheduledDate: scheduledDateTime,
       status: 'scheduled'
     });
@@ -270,6 +386,66 @@ export const updatePost = async (req, res) => {
     if (platforms) post.platforms = Array.isArray(platforms) ? platforms : [platforms];
     if (scheduledDate && scheduledTime) {
       post.scheduledDate = new Date(`${scheduledDate}T${scheduledTime}`);
+    }
+
+    // Handle selectedPages update
+    if (req.body.selectedPages) {
+      try {
+        const parsedSelectedPages = typeof req.body.selectedPages === 'string' 
+          ? JSON.parse(req.body.selectedPages) 
+          : req.body.selectedPages;
+        
+        // Validate selected pages exist in user's Account
+        if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+          const facebookAccount = await Account.findOne({
+            user: userId,
+            platform: 'facebook',
+            isActive: true
+          });
+
+          if (facebookAccount && facebookAccount.pages && facebookAccount.pages.length > 0) {
+            const newSelectedPages = {};
+            
+            // Validate Facebook page selection
+            if (parsedSelectedPages.facebook) {
+              const pageExists = facebookAccount.pages.some(
+                page => page.id === parsedSelectedPages.facebook
+              );
+              if (!pageExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Facebook page (${parsedSelectedPages.facebook}) not found in your connected pages`
+                });
+              }
+              newSelectedPages.facebook = parsedSelectedPages.facebook;
+            }
+
+            // Validate Instagram account selection
+            if (parsedSelectedPages.instagram) {
+              const instagramExists = facebookAccount.pages.some(
+                page => page.instagramAccount && page.instagramAccount.id === parsedSelectedPages.instagram
+              );
+              if (!instagramExists) {
+                return res.status(400).json({
+                  success: false,
+                  message: `Selected Instagram account (${parsedSelectedPages.instagram}) not found in your connected accounts`
+                });
+              }
+              newSelectedPages.instagram = parsedSelectedPages.instagram;
+            }
+
+            post.selectedPages = Object.keys(newSelectedPages).length > 0 ? newSelectedPages : undefined;
+          } else if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
+            return res.status(400).json({
+              success: false,
+              message: 'No Facebook pages found. Please reconnect your Facebook account.'
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing selectedPages:', e);
+        // Continue without updating selectedPages if parsing fails
+      }
     }
 
     // Handle media upload

@@ -7,7 +7,8 @@ import {
   connectLinkedIn,
   disconnectAccount,
   getAccountById,
-  refreshAccountToken
+  refreshAccountToken,
+  getFacebookPages
 } from '../controllers/account.controller.js';
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/', getAccounts);
+router.get('/facebook/pages', getFacebookPages);
 router.get('/:id', getAccountById);
 router.post('/facebook/connect', connectFacebook);
 router.post('/instagram/connect', connectInstagram);

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Publish a post to LinkedIn
@@ -52,10 +54,43 @@ export const publishToLinkedIn = async (accessToken, authorUrn, text, mediaUrl =
       const uploadUrl = registerResponse.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
       const asset = registerResponse.data.value.asset;
 
-      // Upload the image
-      await axios.put(uploadUrl, mediaUrl, {
+      // Get image data - handle both local files and URLs
+      let imageData;
+      const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || (!mediaUrl.startsWith('http'));
+      
+      if (isLocalhost || !mediaUrl.startsWith('http')) {
+        // Local file - read from disk
+        let filePath;
+        if (mediaUrl.startsWith('http')) {
+          // Extract path from localhost URL and decode URL-encoded characters
+          const urlObj = new URL(mediaUrl);
+          const decodedPath = decodeURIComponent(urlObj.pathname);
+          filePath = path.join(process.cwd(), decodedPath);
+        } else {
+          // It's already a file path - decode URL-encoded characters
+          const cleanPath = mediaUrl.replace(/^[/\\]+/, '');
+          const decodedPath = decodeURIComponent(cleanPath);
+          filePath = path.join(process.cwd(), decodedPath);
+        }
+        
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found at: ${filePath}`);
+        }
+        
+        imageData = fs.readFileSync(filePath);
+      } else {
+        // Public URL - fetch the image
+        const imageResponse = await axios.get(mediaUrl, {
+          responseType: 'arraybuffer'
+        });
+        imageData = Buffer.from(imageResponse.data);
+      }
+
+      // Upload the image binary data
+      await axios.put(uploadUrl, imageData, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/octet-stream'
         }
       });
 

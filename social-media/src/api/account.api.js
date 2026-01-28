@@ -51,5 +51,10 @@ export const accountAPI = {
     const response = await api.get('/auth/instagram');
     return response.data;
   },
+
+  getFacebookPages: async () => {
+    const response = await api.get('/accounts/facebook/pages');
+    return response.data;
+  },
 };
 

@@ -1,5 +1,5 @@
-import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { AppProvider } from './context/AppContext'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -19,14 +19,26 @@ import Settings from './pages/Settings'
 
 // Layout component for protected routes
 function ProtectedLayout({ children }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+
+  const toggleSidebar = () => {
+    setSidebarOpen(prev => !prev)
+  }
+
+  // Close sidebar on navigation (mobile)
+  React.useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
   return (
     <AppProvider>
       <div className="flex flex-col lg:flex-row min-h-screen bg-gray-50">
-        <Sidebar />
+        <Sidebar open={sidebarOpen} toggle={toggleSidebar} />
         <main className="flex-1 min-w-0">
-          <Header />
+          <Header toggleSidebar={toggleSidebar} />
           <NotificationPanel />
-          <div className="p-4 lg:p-8">
+          <div className="p-2 sm:p-4 lg:p-8">
             {children}
           </div>
         </main>
