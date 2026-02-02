@@ -57,7 +57,10 @@ const accountSchema = new mongoose.Schema({
     instagramAccount: {
       id: String,
       username: String
-    }
+    },
+    // LinkedIn-specific fields
+    urn: String, // LinkedIn organization URN (e.g., "urn:li:organization:123456")
+    vanityName: String // LinkedIn vanity URL
   }]
 }, {
   timestamps: true

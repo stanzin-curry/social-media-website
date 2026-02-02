@@ -19,14 +19,14 @@ const router = express.Router();
 router.use(authenticate);
 
 // Create post endpoint (accepts content, mediaUrl, scheduledAt, etc.)
-router.post('/create', upload.single('media'), createPostFromCreateEndpoint);
-router.post('/', upload.single('media'), createPost);
+router.post('/create', upload.array('media', 10), createPostFromCreateEndpoint); // Max 10 images
+router.post('/', upload.array('media', 10), createPost); // Max 10 images
 router.get('/', getPosts);
 router.get('/scheduled', getScheduledPosts);
 router.get('/published', getPublishedPosts);
 router.post('/:id/refresh-analytics', refreshPostAnalytics); // Must come before /:id route
 router.get('/:id', getPostById);
-router.put('/:id', upload.single('media'), updatePost);
+router.put('/:id', upload.array('media', 10), updatePost); // Max 10 images
 router.delete('/:id', deletePost);
 
 export default router;

@@ -15,8 +15,20 @@ export default function PostPreviewInstagram({ caption, media }) {
       </div>
 
       {/* Media */}
-      {media && (
-        <img src={media} alt="instagram preview" className="w-full object-cover" />
+      {media && (Array.isArray(media) ? media.length > 0 : media) && (
+        Array.isArray(media) ? (
+          media.length === 1 ? (
+            <img src={media[0]} alt="instagram preview" className="w-full object-cover" />
+          ) : (
+            <div className="grid grid-cols-2 gap-1">
+              {media.map((mediaUrl, index) => (
+                <img key={index} src={mediaUrl} alt={`instagram preview ${index + 1}`} className="w-full object-cover" />
+              ))}
+            </div>
+          )
+        ) : (
+          <img src={media} alt="instagram preview" className="w-full object-cover" />
+        )
       )}
 
       {/* Action buttons */}

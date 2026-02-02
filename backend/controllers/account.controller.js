@@ -228,18 +228,54 @@ export const getFacebookPages = async (req, res) => {
     // Extract pages and Instagram accounts
     const pages = facebookAccount.pages || [];
     const instagramAccounts = [];
+    const axios = (await import('axios')).default;
 
-    // Collect all Instagram accounts from pages
-    pages.forEach(page => {
+    // Collect all Instagram accounts from pages and fetch usernames
+    for (const page of pages) {
       if (page.instagramAccount && page.instagramAccount.id) {
+        let igUsername = page.instagramAccount.username || page.instagramAccount.id;
+        
+        // Fetch Instagram username if not already stored
+        if (!page.instagramAccount.username && page.accessToken) {
+          try {
+            const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${page.instagramAccount.id}`, {
+              params: {
+                access_token: page.accessToken,
+                fields: 'username'
+              }
+            });
+            if (igInfoResponse.data.username) {
+              igUsername = igInfoResponse.data.username;
+              
+              // Update the page's Instagram account username in database
+              await Account.updateOne(
+                { 
+                  user: userId,
+                  platform: 'facebook',
+                  'pages.id': page.id
+                },
+                {
+                  $set: {
+                    'pages.$.instagramAccount.username': igUsername
+                  }
+                }
+              );
+            }
+          } catch (igError) {
+            console.error(`Error fetching Instagram username for ${page.instagramAccount.id}:`, igError.response?.data || igError.message);
+            // Continue with ID if username fetch fails
+          }
+        }
+        
         instagramAccounts.push({
           id: page.instagramAccount.id,
-          username: page.instagramAccount.username || page.instagramAccount.id,
+          username: igUsername,
           pageId: page.id,
-          pageName: page.name
+          pageName: page.name,
+          accessToken: page.accessToken // Include access token for posting
         });
       }
-    });
+    }
 
     res.json({
       success: true,
@@ -254,6 +290,52 @@ export const getFacebookPages = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch Facebook pages'
+    });
+  }
+};
+
+export const getLinkedInPages = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Try to find company LinkedIn account first (for company pages)
+    let linkedInAccount = await Account.findOne({
+      user: userId,
+      platform: 'linkedin-company',
+      isActive: true
+    });
+
+    // Fallback to personal LinkedIn account if company account not found
+    if (!linkedInAccount) {
+      linkedInAccount = await Account.findOne({
+        user: userId,
+        platform: 'linkedin',
+        isActive: true
+      });
+    }
+
+    if (!linkedInAccount) {
+      return res.status(404).json({
+        success: false,
+        message: 'LinkedIn account not found. Please connect your LinkedIn account first.'
+      });
+    }
+
+    const pages = linkedInAccount.pages || [];
+
+    res.json({
+      success: true,
+      pages: pages.map(page => ({
+        id: page.id,
+        name: page.name,
+        urn: page.urn,
+        vanityName: page.vanityName
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch LinkedIn company pages'
     });
   }
 };

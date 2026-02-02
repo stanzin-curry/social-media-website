@@ -22,9 +22,21 @@ export default function PostPreviewLinkedIn({ caption, media }) {
       )}
 
       {/* Media */}
-      {media && (
+      {media && (Array.isArray(media) ? media.length > 0 : media) && (
         <div>
-          <img src={media} alt="linkedin" className="w-full object-cover" />
+          {Array.isArray(media) ? (
+            media.length === 1 ? (
+              <img src={media[0]} alt="linkedin" className="w-full object-cover" />
+            ) : (
+              <div className="grid grid-cols-2 gap-1">
+                {media.map((mediaUrl, index) => (
+                  <img key={index} src={mediaUrl} alt={`linkedin ${index + 1}`} className="w-full object-cover" />
+                ))}
+              </div>
+            )
+          ) : (
+            <img src={media} alt="linkedin" className="w-full object-cover" />
+          )}
         </div>
       )}
 

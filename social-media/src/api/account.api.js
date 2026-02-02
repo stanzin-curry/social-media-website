@@ -42,6 +42,12 @@ export const accountAPI = {
     return response.data;
   },
 
+  // Get LinkedIn Company Pages OAuth URL
+  getLinkedInCompanyAuthUrl: async () => {
+    const response = await api.get('/auth/linkedin-company');
+    return response.data;
+  },
+
   getFacebookAuthUrl: async () => {
     const response = await api.get('/auth/facebook');
     return response.data;
@@ -54,6 +60,11 @@ export const accountAPI = {
 
   getFacebookPages: async () => {
     const response = await api.get('/accounts/facebook/pages');
+    return response.data;
+  },
+
+  getLinkedInPages: async () => {
+    const response = await api.get('/accounts/linkedin/pages');
     return response.data;
   },
 };

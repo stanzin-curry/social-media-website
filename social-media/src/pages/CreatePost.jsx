@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaFacebook, FaLinkedin, FaInstagram, FaCalendar, FaClock, FaImage } from "react-icons/fa";
+import { FaFacebook, FaLinkedin, FaInstagram, FaCalendar, FaClock, FaImage, FaTimes, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { postAPI } from "../api/post.api.js";
 import PageSelector from "../components/PageSelector.jsx";
@@ -10,12 +10,15 @@ export default function CreatePost() {
   const { user } = useAuth();
   
   const [caption, setCaption] = useState("");
-  const [media, setMedia] = useState(null);
-  const [mediaFile, setMediaFile] = useState(null);
+  const [media, setMedia] = useState([]);
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
   const [facebookActive, setFacebookActive] = useState(false);
   const [linkedinActive, setLinkedinActive] = useState(false);
   const [instagramActive, setInstagramActive] = useState(false);
-  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null });
+  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null, linkedin: null });
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,29 +33,110 @@ export default function CreatePost() {
     return "U";
   };
 
-  // Handle media upload
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      media.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [media]);
+
+  // Handle media upload - multiple files
   const handleMediaUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const previewURL = URL.createObjectURL(file);
-      setMedia(previewURL);
-      setMediaFile(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      const imageFiles = files.filter(file => file.type.startsWith("image/"));
+      if (imageFiles.length > 0) {
+        const newPreviews = imageFiles.map(file => URL.createObjectURL(file));
+        setMediaFiles(prev => [...prev, ...imageFiles]);
+        setMedia(prev => [...prev, ...newPreviews]);
+      }
     }
+    // Reset input to allow selecting the same file again
+    e.target.value = '';
   };
 
-  // Handle drag and drop
+  // Handle drag and drop - multiple files
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith("image/")) {
-      const previewURL = URL.createObjectURL(file);
-      setMedia(previewURL);
-      setMediaFile(file);
+    const files = Array.from(e.dataTransfer.files).filter(
+      file => file.type.startsWith("image/")
+    );
+    
+    if (files.length > 0) {
+      const newPreviews = files.map(file => URL.createObjectURL(file));
+      setMediaFiles(prev => [...prev, ...files]);
+      setMedia(prev => [...prev, ...newPreviews]);
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
+  };
+
+  // Navigation functions
+  const nextImage = (e) => {
+    e?.stopPropagation();
+    if (media.length > 1) {
+      setCurrentImageIndex((prev) => (prev + 1) % media.length);
+    }
+  };
+
+  const prevImage = (e) => {
+    e?.stopPropagation();
+    if (media.length > 1) {
+      setCurrentImageIndex((prev) => (prev - 1 + media.length) % media.length);
+    }
+  };
+
+  const goToImage = (index) => {
+    setCurrentImageIndex(index);
+  };
+
+  // Touch/swipe handlers
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe && media.length > 1) {
+      nextImage();
+    }
+    if (isRightSwipe && media.length > 1) {
+      prevImage();
+    }
+  };
+
+  // Remove an image
+  const removeImage = (index) => {
+    // Revoke object URL to prevent memory leaks
+    URL.revokeObjectURL(media[index]);
+    
+    setMedia(prev => prev.filter((_, i) => i !== index));
+    setMediaFiles(prev => prev.filter((_, i) => i !== index));
+    
+    // Adjust current index if needed
+    if (index === currentImageIndex && media.length > 1) {
+      setCurrentImageIndex(Math.max(0, index - 1));
+    } else if (index < currentImageIndex) {
+      setCurrentImageIndex(prev => prev - 1);
+    }
+    
+    // If no images left, reset index
+    if (media.length === 1) {
+      setCurrentImageIndex(0);
+    }
   };
 
   // Handle form submission
@@ -104,13 +188,14 @@ export default function CreatePost() {
       formData.append("scheduledTime", time);
       
       // Add selectedPages if any pages are selected
-      if (selectedPages.facebook || selectedPages.instagram) {
+      if (selectedPages.facebook || selectedPages.instagram || selectedPages.linkedin) {
         formData.append("selectedPages", JSON.stringify(selectedPages));
       }
       
-      if (mediaFile) {
-        formData.append("media", mediaFile);
-      }
+      // Append all media files
+      mediaFiles.forEach((file) => {
+        formData.append("media", file);
+      });
 
       const response = await fetch("http://localhost:4000/api/posts/create", {
         method: "POST",
@@ -124,14 +209,16 @@ export default function CreatePost() {
 
       if (response.ok && data.success) {
         setSuccess("Post scheduled successfully!");
+        // Cleanup object URLs before clearing
+        media.forEach(url => URL.revokeObjectURL(url));
         // Clear form
         setCaption("");
-        setMedia(null);
-        setMediaFile(null);
+        setMedia([]);
+        setMediaFiles([]);
         setFacebookActive(false);
         setLinkedinActive(false);
         setInstagramActive(false);
-        setSelectedPages({ facebook: null, instagram: null });
+        setSelectedPages({ facebook: null, instagram: null, linkedin: null });
         setDate("");
         setTime("");
         
@@ -187,35 +274,154 @@ export default function CreatePost() {
             <label className="block text-xs sm:text-sm font-medium mb-2 text-gray-700">
               Media Upload
             </label>
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onClick={() => document.getElementById("mediaUploadInput").click()}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-blue-500 transition-colors min-h-[120px] sm:min-h-[150px] flex flex-col items-center justify-center"
-            >
-              <FaImage className="mx-auto text-2xl sm:text-3xl text-gray-400 mb-2" />
-              <p className="text-xs sm:text-sm text-gray-600 mb-1">
-                Click or drag & drop your image here
-              </p>
-              <p className="text-[10px] sm:text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
-              
-              {media && (
-                <div className="mt-3 sm:mt-4 w-full">
-                  <img
-                    src={media}
-                    alt="Preview"
-                    className="max-h-32 sm:max-h-48 mx-auto rounded-lg object-cover w-full"
-                  />
-                  <p className="text-[10px] sm:text-xs text-gray-500 mt-2 truncate">
-                    {mediaFile?.name || "Image preview"}
-                  </p>
+            
+            {media.length === 0 ? (
+              // Empty state - show upload area
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onClick={() => document.getElementById("mediaUploadInput").click()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:border-blue-500 transition-colors min-h-[120px] sm:min-h-[150px] flex flex-col items-center justify-center"
+              >
+                <FaImage className="mx-auto text-2xl sm:text-3xl text-gray-400 mb-2" />
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">
+                  Click or drag & drop your images here
+                </p>
+                <p className="text-[10px] sm:text-xs text-gray-500">PNG, JPG, GIF up to 10MB each</p>
+              </div>
+            ) : (
+              // Instagram-style carousel when images are uploaded
+              <div className="space-y-3">
+                {/* Main Carousel Display */}
+                <div
+                  className="relative bg-black rounded-lg overflow-hidden aspect-square max-h-[400px] sm:max-h-[500px]"
+                  onTouchStart={onTouchStart}
+                  onTouchMove={onTouchMove}
+                  onTouchEnd={onTouchEnd}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                >
+                  {/* Current Image */}
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img
+                      src={media[currentImageIndex]}
+                      alt={`Image ${currentImageIndex + 1}`}
+                      className="w-full h-full object-contain"
+                    />
+                    
+                    {/* Image Counter (Instagram style - top right) */}
+                    {media.length > 1 && (
+                      <div className="absolute top-3 right-3 bg-black/50 text-white px-2 py-1 rounded text-xs font-medium">
+                        {currentImageIndex + 1} / {media.length}
+                      </div>
+                    )}
+                    
+                    {/* Remove Button (top left) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeImage(currentImageIndex);
+                      }}
+                      className="absolute top-3 left-3 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+                      aria-label="Remove image"
+                    >
+                      <FaTimes className="text-sm" />
+                    </button>
+                    
+                    {/* Navigation Arrows */}
+                    {media.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={prevImage}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors"
+                          aria-label="Previous image"
+                        >
+                          <FaChevronLeft />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={nextImage}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors"
+                          aria-label="Next image"
+                        >
+                          <FaChevronRight />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Dots Indicator (bottom center - Instagram style) */}
+                  {media.length > 1 && (
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                      {media.map((_, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            goToImage(index);
+                          }}
+                          className={`h-1.5 rounded-full transition-all ${
+                            index === currentImageIndex
+                              ? 'bg-white w-6'
+                              : 'bg-white/50 hover:bg-white/75 w-1.5'
+                          }`}
+                          aria-label={`Go to image ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+                
+                {/* Thumbnail Strip (below carousel) */}
+                {media.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    <style>{`
+                      .thumbnail-scroll::-webkit-scrollbar {
+                        display: none;
+                      }
+                    `}</style>
+                    <div className="flex gap-2 thumbnail-scroll">
+                      {media.map((preview, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => goToImage(index)}
+                          className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all ${
+                            index === currentImageIndex
+                              ? 'border-blue-500 ring-2 ring-blue-200'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <img
+                            src={preview}
+                            alt={`Thumbnail ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Add More Images Button */}
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("mediaUploadInput").click()}
+                  className="w-full py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-blue-500 hover:text-blue-500 transition-colors"
+                >
+                  + Add More Images
+                </button>
+              </div>
+            )}
+            
             <input
               id="mediaUploadInput"
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={handleMediaUpload}
             />
@@ -281,6 +487,15 @@ export default function CreatePost() {
               platform="instagram"
               value={selectedPages.instagram}
               onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
+            />
+          )}
+
+          {/* Page Selection for LinkedIn */}
+          {linkedinActive && (
+            <PageSelector
+              platform="linkedin"
+              value={selectedPages.linkedin}
+              onChange={(pageId) => setSelectedPages({ ...selectedPages, linkedin: pageId })}
             />
           )}
 
@@ -385,13 +600,38 @@ export default function CreatePost() {
                 )}
 
                 {/* Media */}
-                {media && (
-                  <div className="w-full">
-                    <img
-                      src={media}
-                      alt="Post media"
-                      className="w-full h-auto object-cover"
-                    />
+                {media.length > 0 && (
+                  <div className="w-full relative bg-black aspect-square">
+                    {media.length === 1 ? (
+                      <img
+                        src={media[0]}
+                        alt="Post media"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <>
+                        <img
+                          src={media[currentImageIndex]}
+                          alt={`Post media ${currentImageIndex + 1}`}
+                          className="w-full h-full object-contain"
+                        />
+                        {/* Image counter */}
+                        <div className="absolute top-3 right-3 bg-black/50 text-white px-2 py-1 rounded text-xs font-medium">
+                          {currentImageIndex + 1} / {media.length}
+                        </div>
+                        {/* Dots indicator */}
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                          {media.map((_, index) => (
+                            <div
+                              key={index}
+                              className={`h-1.5 rounded-full transition-all ${
+                                index === currentImageIndex ? 'bg-white w-6' : 'bg-white/50 w-1.5'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 

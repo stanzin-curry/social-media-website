@@ -11,6 +11,8 @@ export default function PageSelector({ platform, value, onChange, className = ''
   useEffect(() => {
     if (platform === 'facebook' || platform === 'instagram') {
       fetchPages();
+    } else if (platform === 'linkedin') {
+      fetchLinkedInPages();
     }
   }, [platform]);
 
@@ -28,6 +30,24 @@ export default function PageSelector({ platform, value, onChange, className = ''
     } catch (err) {
       setError('Failed to load pages. Please try again.');
       console.error('Error fetching pages:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchLinkedInPages = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await accountAPI.getLinkedInPages();
+      if (response.success) {
+        setPages(response.pages || []);
+      } else {
+        setError(response.message || 'Failed to fetch LinkedIn company pages');
+      }
+    } catch (err) {
+      setError('Failed to load LinkedIn company pages. Please try again.');
+      console.error('Error fetching LinkedIn pages:', err);
     } finally {
       setLoading(false);
     }
@@ -102,6 +122,36 @@ export default function PageSelector({ platform, value, onChange, className = ''
           {instagramAccounts.map((account) => (
             <option key={account.id} value={account.id}>
               @{account.username} ({account.pageName})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  if (platform === 'linkedin') {
+    if (pages.length === 0) {
+      return (
+        <div className={`text-xs sm:text-sm text-gray-500 py-2 ${className}`}>
+          No LinkedIn company pages found. Posts will be published to your personal profile.
+        </div>
+      );
+    }
+
+    return (
+      <div className={className}>
+        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+          Select LinkedIn Company Page (or leave empty for personal profile)
+        </label>
+        <select
+          value={value || ''}
+          onChange={(e) => onChange && onChange(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm sm:text-base min-h-[44px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Personal Profile (Default)</option>
+          {pages.map((page) => (
+            <option key={page.id} value={page.id}>
+              {page.name}
             </option>
           ))}
         </select>

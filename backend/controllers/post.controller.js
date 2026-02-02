@@ -32,10 +32,10 @@ export const createPostFromCreateEndpoint = async (req, res) => {
       });
     }
 
-    // Handle media upload (req.file is set by Multer middleware)
-    let mediaUrl = null;
-    if (req.file) {
-      mediaUrl = `/uploads/${req.file.filename}`;
+    // Handle media upload (req.files is set by Multer middleware)
+    let mediaUrls = [];
+    if (req.files && req.files.length > 0) {
+      mediaUrls = req.files.map(file => `/uploads/${file.filename}`);
     }
 
     // Parse platforms if it's a JSON string
@@ -112,7 +112,7 @@ export const createPostFromCreateEndpoint = async (req, res) => {
     const post = await Post.create({
       user: userId, // Map userId to user (existing model field)
       caption: content, // Map content to caption (existing model field)
-      media: mediaUrl, // Map mediaUrl to media (existing model field)
+      media: mediaUrls, // Array of media URLs
       platforms: platformsArray,
       selectedPages: Object.keys(selectedPages).length > 0 ? selectedPages : undefined,
       scheduledDate: scheduledAt, // Map scheduledAt to scheduledDate (existing model field)
@@ -155,9 +155,9 @@ export const createPost = async (req, res) => {
     }
 
     // Handle media upload - robust file check
-    let mediaUrl = null;
-    if (req.file) {
-      mediaUrl = `/uploads/${req.file.filename}`;
+    let mediaUrls = [];
+    if (req.files && req.files.length > 0) {
+      mediaUrls = req.files.map(file => `/uploads/${file.filename}`);
     }
 
     // Parse platforms if it's a JSON string (from FormData)
@@ -234,7 +234,7 @@ export const createPost = async (req, res) => {
     const post = await Post.create({
       user: userId,
       caption,
-      media: mediaUrl, // Can be null for text-only posts
+      media: mediaUrls, // Array of media URLs, can be empty for text-only posts
       platforms: platformsArray,
       selectedPages: Object.keys(selectedPages).length > 0 ? selectedPages : undefined,
       scheduledDate: scheduledDateTime,
@@ -449,8 +449,8 @@ export const updatePost = async (req, res) => {
     }
 
     // Handle media upload
-    if (req.file) {
-      post.media = `/uploads/${req.file.filename}`;
+    if (req.files && req.files.length > 0) {
+      post.media = req.files.map(file => `/uploads/${file.filename}`);
     }
 
     await post.save();
