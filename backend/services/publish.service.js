@@ -34,10 +34,19 @@ export const publishPost = async (post) => {
       }
 
       // Construct full media URL if media exists
+      // Handle both array (new) and string (legacy) formats
       let mediaUrl = null;
       if (post.media) {
         const baseUrl = process.env.BACKEND_URL || 'http://localhost:4000';
-        mediaUrl = post.media.startsWith('http') ? post.media : `${baseUrl}${post.media}`;
+        // Check if media is an array (new format) or string (legacy)
+        if (Array.isArray(post.media) && post.media.length > 0) {
+          // Use the first image for now (can be extended to support carousels later)
+          const firstMedia = post.media[0];
+          mediaUrl = firstMedia.startsWith('http') ? firstMedia : `${baseUrl}${firstMedia}`;
+        } else if (typeof post.media === 'string') {
+          // Legacy format - single string
+          mediaUrl = post.media.startsWith('http') ? post.media : `${baseUrl}${post.media}`;
+        }
       }
 
       let publishResult;
@@ -131,17 +140,58 @@ export const publishPost = async (post) => {
           break;
 
         case 'linkedin':
-          // LinkedIn requires author URN format: "urn:li:person:123456"
-          const authorUrn = account.platformUserId.startsWith('urn:li:') 
-            ? account.platformUserId 
-            : `urn:li:person:${account.platformUserId}`;
-          
-          publishResult = await publishToLinkedIn(
-            account.accessToken,
-            authorUrn,
-            post.caption,
-            mediaUrl
-          );
+          // Check if a specific company page was selected
+          if (post.selectedPages && post.selectedPages.linkedin) {
+            // Posting to company page - use linkedin-company account
+            const linkedInAccount = await Account.findOne({ 
+              user: post.user, 
+              platform: 'linkedin-company', 
+              isActive: true 
+            });
+            
+            if (!linkedInAccount || !linkedInAccount.pages || linkedInAccount.pages.length === 0) {
+              throw new Error('LinkedIn company account not found or no company pages available. Please connect your LinkedIn company account.');
+            }
+            
+            const selectedPage = linkedInAccount.pages.find(
+              page => page.id === post.selectedPages.linkedin
+            );
+            
+            if (!selectedPage) {
+              throw new Error(`Selected LinkedIn company page (${post.selectedPages.linkedin}) not found.`);
+            }
+            
+            const companyUrn = selectedPage.urn || `urn:li:organization:${selectedPage.id}`;
+            publishResult = await publishToLinkedIn(
+              linkedInAccount.accessToken,
+              companyUrn,
+              post.caption,
+              mediaUrl
+            );
+            publishResult.pageId = selectedPage.id;
+          } else {
+            // Posting to personal profile - use linkedin account
+            const linkedInAccount = await Account.findOne({ 
+              user: post.user, 
+              platform: 'linkedin', 
+              isActive: true 
+            });
+            
+            if (!linkedInAccount) {
+              throw new Error('LinkedIn personal account not found. Please connect your LinkedIn personal account.');
+            }
+            
+            const authorUrn = linkedInAccount.platformUserId.startsWith('urn:li:') 
+              ? linkedInAccount.platformUserId 
+              : `urn:li:person:${linkedInAccount.platformUserId}`;
+            
+            publishResult = await publishToLinkedIn(
+              linkedInAccount.accessToken,
+              authorUrn,
+              post.caption,
+              mediaUrl
+            );
+          }
           break;
 
         default:

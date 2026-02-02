@@ -254,15 +254,36 @@ export default function PostDetailModal({ open, onClose, post }) {
                 </div>
               </div>
 
-              {post.media && (
+              {post.media && (Array.isArray(post.media) ? post.media.length > 0 : post.media) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Media</label>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <img 
-                      src={post.media.startsWith('http') ? post.media : `${window.location.origin}${post.media}`} 
-                      alt="Post media" 
-                      className="w-full h-auto max-h-64 object-contain"
-                    />
+                    {Array.isArray(post.media) ? (
+                      post.media.length === 1 ? (
+                        <img 
+                          src={post.media[0].startsWith('http') ? post.media[0] : `${window.location.origin}${post.media[0]}`} 
+                          alt="Post media" 
+                          className="w-full h-auto max-h-64 object-contain"
+                        />
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 p-2">
+                          {post.media.map((mediaUrl, index) => (
+                            <img 
+                              key={index}
+                              src={mediaUrl.startsWith('http') ? mediaUrl : `${window.location.origin}${mediaUrl}`} 
+                              alt={`Post media ${index + 1}`} 
+                              className="w-full h-auto max-h-48 object-cover rounded"
+                            />
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <img 
+                        src={post.media.startsWith('http') ? post.media : `${window.location.origin}${post.media}`} 
+                        alt="Post media" 
+                        className="w-full h-auto max-h-64 object-contain"
+                      />
+                    )}
                   </div>
                 </div>
               )}

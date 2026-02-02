@@ -59,9 +59,12 @@ export const connectInstagramAccount = async ({ userId, accessToken, platformUse
   return account;
 };
 
-// LinkedIn OAuth connection
-export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken, platformUserId, platformUsername, expiresIn }) => {
-  let account = await Account.findOne({ user: userId, platform: 'linkedin' });
+// LinkedIn OAuth connection - supports both personal and company accounts
+export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken, platformUserId, platformUsername, expiresIn, pages = [], accountType = 'personal' }) => {
+  // accountType: 'personal' or 'company'
+  const platform = accountType === 'company' ? 'linkedin-company' : 'linkedin';
+  
+  let account = await Account.findOne({ user: userId, platform: platform });
   
   const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
 
@@ -71,6 +74,16 @@ export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken
     if (tokenExpiresAt) account.tokenExpiresAt = tokenExpiresAt;
     account.platformUserId = platformUserId;
     account.platformUsername = platformUsername;
+    // Update pages array if provided
+    if (pages && pages.length > 0) {
+      account.pages = pages.map(page => ({
+        id: page.id,
+        name: page.name,
+        accessToken: accessToken,
+        urn: page.urn,
+        vanityName: page.vanityName
+      }));
+    }
     account.isActive = true;
     account.lastSync = new Date();
     await account.save();
@@ -79,12 +92,19 @@ export const connectLinkedInAccount = async ({ userId, accessToken, refreshToken
 
   account = await Account.create({
     user: userId,
-    platform: 'linkedin',
+    platform: platform,
     platformUserId,
     platformUsername,
     accessToken,
     refreshToken,
     tokenExpiresAt,
+    pages: pages.map(page => ({
+      id: page.id,
+      name: page.name,
+      accessToken: accessToken,
+      urn: page.urn,
+      vanityName: page.vanityName
+    })),
     isActive: true
   });
 
@@ -135,16 +155,30 @@ export const getInstagramAuthUrl = (userId) => {
   return `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${encodeURIComponent(state)}`;
 };
 
+// LinkedIn Personal Profile OAuth URL
 export const getLinkedInAuthUrl = (userId) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   if (!clientId) {
     throw new Error('LINKEDIN_CLIENT_ID is not set in environment variables');
   }
   const redirectUri = process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:4000/api/auth/linkedin/callback';
-  // OpenID Connect scopes
+  // Personal profile scopes
   const scope = 'openid profile email w_member_social';
-  // Encode userId in state parameter
   const state = Buffer.from(JSON.stringify({ userId, timestamp: Date.now() })).toString('base64');
+  
+  return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scope)}`;
+};
+
+// LinkedIn Company Pages OAuth URL (for Community Management API)
+export const getLinkedInCompanyAuthUrl = (userId) => {
+  const clientId = process.env.LINKEDIN_COMPANY_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('LINKEDIN_COMPANY_CLIENT_ID is not set in environment variables');
+  }
+  const redirectUri = process.env.LINKEDIN_COMPANY_REDIRECT_URI || 'http://localhost:4000/api/auth/linkedin-company/callback';
+  // Company pages scopes - includes w_organization_social
+  const scope = 'openid profile email w_organization_social';
+  const state = Buffer.from(JSON.stringify({ userId, timestamp: Date.now(), accountType: 'company' })).toString('base64');
   
   return `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scope)}`;
 };

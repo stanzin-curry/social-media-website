@@ -12,8 +12,8 @@ const postSchema = new mongoose.Schema({
     maxlength: 2200
   },
   media: {
-    type: String, // URL to uploaded image/video
-    default: null
+    type: [String], // Array of URLs to uploaded images
+    default: []
   },
   platforms: [{
     type: String,
@@ -22,7 +22,8 @@ const postSchema = new mongoose.Schema({
   }],
   selectedPages: {
     facebook: String,    // Selected Facebook Page ID
-    instagram: String    // Selected Instagram Account ID
+    instagram: String,   // Selected Instagram Account ID
+    linkedin: String     // Selected LinkedIn Company Page ID
   },
   scheduledDate: {
     type: Date,

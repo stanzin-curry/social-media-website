@@ -1,6 +1,6 @@
 import User from '../models/User.model.js';
 import { generateToken } from '../utils/jwt.js';
-import { getLinkedInAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
+import { getLinkedInAuthUrl, getLinkedInCompanyAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
 import { connectLinkedInAccount, connectFacebookAccount, connectInstagramAccount } from '../services/oauth.service.js';
 import { createLinkedInPost } from '../services/linkedin.service.js';
 import { createFacebookPost, postToInstagram } from '../services/facebook.service.js';
@@ -183,20 +183,168 @@ export const linkedinCallback = async (req, res) => {
     const platformUserId = profile.sub;
     const platformUsername = profile.name || profile.email || profile.sub;
 
-    // Save account
+    // Fetch company pages
+    let pagesArray = [];
+    try {
+      const { getLinkedInCompanyPages } = await import('../services/linkedin.service.js');
+      const companyPages = await getLinkedInCompanyPages(access_token);
+      
+      pagesArray = companyPages.map(page => ({
+        id: page.id,
+        name: page.name,
+        urn: page.urn,
+        vanityName: page.vanityName
+      }));
+
+      console.log('=== LinkedIn Company Pages Response ===');
+      console.log('Total company pages found:', pagesArray.length);
+      console.log('Pages data:', JSON.stringify(pagesArray, null, 2));
+      console.log('=== End LinkedIn Company Pages Response ===');
+    } catch (pageError) {
+      console.error('Error fetching LinkedIn company pages:', pageError);
+      // Continue without pages - user can still post to personal profile
+      // This is not a fatal error, so we continue
+    }
+
+    // Save account with pages (personal profile)
     await connectLinkedInAccount({
       userId,
       accessToken: access_token,
       refreshToken: refresh_token,
       platformUserId,
       platformUsername,
-      expiresIn: expires_in
+      expiresIn: expires_in,
+      pages: pagesArray,
+      accountType: 'personal'
     });
 
     // Redirect to frontend accounts page
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=linkedin_connected`);
   } catch (error) {
     console.error('LinkedIn OAuth callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=${encodeURIComponent(error.response?.data?.error_description || error.message || 'oauth_failed')}`);
+  }
+};
+
+// LinkedIn Company Pages OAuth - Return OAuth URL as JSON
+export const linkedinCompanyAuth = async (req, res) => {
+  try {
+    const userId = req.user?._id?.toString();
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+    const authUrl = getLinkedInCompanyAuthUrl(userId);
+    res.json({
+      success: true,
+      url: authUrl
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to initiate LinkedIn Company OAuth'
+    });
+  }
+};
+
+// LinkedIn Company Pages OAuth Callback
+export const linkedinCompanyCallback = async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+
+    if (error) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=missing_code`);
+    }
+
+    // Extract userId from state parameter
+    let userId;
+    let accountType = 'company';
+    try {
+      if (state) {
+        const decodedState = JSON.parse(Buffer.from(decodeURIComponent(state), 'base64').toString());
+        userId = decodedState.userId;
+        accountType = decodedState.accountType || 'company';
+      }
+    } catch (err) {
+      console.error('Error decoding state:', err);
+    }
+
+    if (!userId) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=invalid_state`);
+    }
+
+    // Exchange authorization code for access token
+    const tokenResponse = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', 
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: process.env.LINKEDIN_COMPANY_REDIRECT_URI || 'http://localhost:4000/api/auth/linkedin-company/callback',
+        client_id: process.env.LINKEDIN_COMPANY_CLIENT_ID,
+        client_secret: process.env.LINKEDIN_COMPANY_CLIENT_SECRET
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+
+    // Get user profile using OpenID Connect userinfo endpoint
+    const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`
+      }
+    });
+
+    const profile = profileResponse.data;
+    const platformUserId = profile.sub;
+    const platformUsername = profile.name || profile.email || profile.sub;
+
+    // Fetch company pages
+    let pagesArray = [];
+    try {
+      const { getLinkedInCompanyPages } = await import('../services/linkedin.service.js');
+      const companyPages = await getLinkedInCompanyPages(access_token);
+      
+      pagesArray = companyPages.map(page => ({
+        id: page.id,
+        name: page.name,
+        urn: page.urn,
+        vanityName: page.vanityName
+      }));
+
+      console.log('=== LinkedIn Company Pages Response ===');
+      console.log('Total company pages found:', pagesArray.length);
+      console.log('Pages data:', JSON.stringify(pagesArray, null, 2));
+      console.log('=== End LinkedIn Company Pages Response ===');
+    } catch (pageError) {
+      console.error('Error fetching LinkedIn company pages:', pageError);
+      // Continue without pages - user can still post to personal profile
+    }
+
+    // Save account with pages (accountType = 'company')
+    await connectLinkedInAccount({
+      userId,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      platformUserId,
+      platformUsername,
+      expiresIn: expires_in,
+      pages: pagesArray,
+      accountType: 'company'
+    });
+
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=linkedin_company_connected`);
+  } catch (error) {
+    console.error('LinkedIn Company OAuth callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=${encodeURIComponent(error.response?.data?.error_description || error.message || 'oauth_failed')}`);
   }
 };
@@ -344,7 +492,8 @@ export const facebookCallback = async (req, res) => {
       console.log('=== End Facebook Pages Response ===');
 
       // Map pages to the format needed for Account.pages array
-      pagesArray = allPages.map(page => {
+      // Fetch Instagram usernames for all accounts
+      pagesArray = await Promise.all(allPages.map(async (page) => {
         const pageData = {
           id: page.id,
           name: page.name,
@@ -353,14 +502,35 @@ export const facebookCallback = async (req, res) => {
 
         // Include Instagram Business Account if available
         if (page.instagram_business_account) {
+          const igAccount = page.instagram_business_account;
+          let igUsername = igAccount.username || null;
+          
+          // Fetch Instagram username if not provided
+          if (!igUsername) {
+            try {
+              const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${igAccount.id}`, {
+                params: {
+                  access_token: page.access_token,
+                  fields: 'username'
+                }
+              });
+              if (igInfoResponse.data.username) {
+                igUsername = igInfoResponse.data.username;
+              }
+            } catch (igError) {
+              console.error(`Error fetching Instagram username for ${igAccount.id}:`, igError.response?.data || igError.message);
+              // Continue with null if username fetch fails
+            }
+          }
+          
           pageData.instagramAccount = {
-            id: page.instagram_business_account.id,
-            username: page.instagram_business_account.username || null
+            id: igAccount.id,
+            username: igUsername
           };
         }
 
         return pageData;
-      });
+      }));
 
       // Find the first page with an Instagram Business Account and save it separately
       if (allPages && allPages.length > 0) {

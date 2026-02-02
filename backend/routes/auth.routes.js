@@ -2,8 +2,10 @@ import express from 'express';
 import { 
   register, 
   login, 
-  linkedinAuth, 
+  linkedinAuth,
+  linkedinCompanyAuth,
   linkedinCallback,
+  linkedinCompanyCallback,
   facebookAuth,
   facebookCallback,
   instagramAuth,
@@ -31,9 +33,13 @@ router.get('/me', authenticate, (req, res) => {
   });
 });
 
-// OAuth routes - LinkedIn
+// OAuth routes - LinkedIn Personal Profile
 router.get('/linkedin', authenticate, linkedinAuth);
 router.get('/linkedin/callback', linkedinCallback);
+
+// OAuth routes - LinkedIn Company Pages
+router.get('/linkedin-company', authenticate, linkedinCompanyAuth);
+router.get('/linkedin-company/callback', linkedinCompanyCallback);
 
 // OAuth routes - Facebook
 router.get('/facebook', authenticate, facebookAuth);

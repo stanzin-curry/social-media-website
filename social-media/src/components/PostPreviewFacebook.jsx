@@ -22,9 +22,21 @@ export default function PostPreviewFacebook({ caption, media }) {
       )}
 
       {/* Media */}
-      {media && (
+      {media && (Array.isArray(media) ? media.length > 0 : media) && (
         <div className="w-full">
-          <img src={media} alt="facebook media" className="w-full object-cover" />
+          {Array.isArray(media) ? (
+            media.length === 1 ? (
+              <img src={media[0]} alt="facebook media" className="w-full object-cover" />
+            ) : (
+              <div className="grid grid-cols-2 gap-1">
+                {media.map((mediaUrl, index) => (
+                  <img key={index} src={mediaUrl} alt={`facebook media ${index + 1}`} className="w-full object-cover" />
+                ))}
+              </div>
+            )
+          ) : (
+            <img src={media} alt="facebook media" className="w-full object-cover" />
+          )}
         </div>
       )}
 

@@ -8,7 +8,8 @@ import {
   disconnectAccount,
   getAccountById,
   refreshAccountToken,
-  getFacebookPages
+  getFacebookPages,
+  getLinkedInPages
 } from '../controllers/account.controller.js';
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.use(authenticate);
 
 router.get('/', getAccounts);
 router.get('/facebook/pages', getFacebookPages);
+router.get('/linkedin/pages', getLinkedInPages);
 router.get('/:id', getAccountById);
 router.post('/facebook/connect', connectFacebook);
 router.post('/instagram/connect', connectInstagram);

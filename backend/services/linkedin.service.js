@@ -205,3 +205,74 @@ export const getLinkedInProfile = async (accessToken) => {
   }
 };
 
+/**
+ * Fetch all LinkedIn company pages (organizations) the user manages
+ * @param {string} accessToken - LinkedIn access token
+ * @returns {Promise<Array>} Array of company pages
+ */
+export const getLinkedInCompanyPages = async (accessToken) => {
+  try {
+    // Fetch organizations the user manages using organizationalEntityAcls
+    const response = await axios.get('https://api.linkedin.com/v2/organizationalEntityAcls', {
+      params: {
+        q: 'roleAssignee',
+        role: 'ADMINISTRATOR,CONTENT_ADMINISTRATOR',
+        state: 'APPROVED'
+      },
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'X-Restli-Protocol-Version': '2.0.0'
+      }
+    });
+
+    const acls = response.data.elements || [];
+    const companyPages = [];
+
+    // Fetch details for each organization
+    for (const acl of acls) {
+      const organizationUrn = acl.organizationalTarget;
+      
+      try {
+        // Extract organization ID from URN (format: urn:li:organization:123456)
+        const orgId = organizationUrn.split(':').pop();
+        
+        // Fetch organization details
+        const orgResponse = await axios.get(`https://api.linkedin.com/v2/organizations/${orgId}`, {
+          params: {
+            projection: '(id,name,vanityName,logoV2(original~:playableStreams))'
+          },
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Restli-Protocol-Version': '2.0.0'
+          }
+        });
+
+        const org = orgResponse.data;
+        companyPages.push({
+          id: orgId,
+          urn: organizationUrn,
+          name: org.name?.localized?.en_US || org.name || 'Unknown Company',
+          vanityName: org.vanityName || null
+        });
+      } catch (err) {
+        console.error(`Error fetching organization ${organizationUrn}:`, err.response?.data || err.message);
+        // Continue with other organizations
+      }
+    }
+
+    return companyPages;
+  } catch (error) {
+    console.error('Error fetching LinkedIn company pages:', error.response?.data || error.message);
+    console.error('Error status:', error.response?.status);
+    console.error('Error details:', JSON.stringify(error.response?.data, null, 2));
+    
+    // Return empty array if no pages found or permission denied
+    if (error.response?.status === 403 || error.response?.status === 401) {
+      console.log('LinkedIn: User may not have w_organization_social permission or no company pages found');
+      console.log('Make sure the LinkedIn app has "Share on LinkedIn" product approved and user granted w_organization_social permission');
+      return [];
+    }
+    throw new Error(`LinkedIn API error: ${error.response?.data?.message || error.message}`);
+  }
+};
+

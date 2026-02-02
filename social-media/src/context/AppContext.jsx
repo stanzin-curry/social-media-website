@@ -47,12 +47,28 @@ export function AppProvider({ children }) {
         const data = {}
         
         response.accounts.forEach(account => {
-          accounts[account.platform] = account.isActive
-          data[account.platform] = {
-            username: account.platformUsername,
-            followers: account.followers || 0,
-            posts: 0, // Would need to query posts to get this
-            lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never'
+          // Handle LinkedIn account types
+          if (account.platform === 'linkedin' || account.platform === 'linkedin-company') {
+            // Mark LinkedIn as connected if either personal or company account exists
+            accounts['linkedin'] = accounts['linkedin'] || account.isActive
+            // Store data for the account type that exists
+            if (account.isActive) {
+              data['linkedin'] = {
+                username: account.platformUsername,
+                followers: account.followers || 0,
+                posts: 0,
+                lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never',
+                accountType: account.platform === 'linkedin-company' ? 'company' : 'personal'
+              }
+            }
+          } else {
+            accounts[account.platform] = account.isActive
+            data[account.platform] = {
+              username: account.platformUsername,
+              followers: account.followers || 0,
+              posts: 0,
+              lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never'
+            }
           }
         })
         
@@ -88,7 +104,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  const toggleConnection = async (platform) => {
+  const toggleConnection = async (platform, accountType = null) => {
     try {
       const token = localStorage.getItem('token')
       if (!token) {
@@ -96,10 +112,35 @@ export function AppProvider({ children }) {
         return
       }
 
-      // If disconnecting, find account and disconnect
-      if (connectedAccounts[platform]) {
+      // Check if the specific account type is connected
+      let isConnected = false;
+      if (platform === 'linkedin' && accountType) {
+        // For LinkedIn, check the specific account type
         const accounts = await accountAPI.getAccounts()
-        const account = accounts.accounts?.find(acc => acc.platform === platform && acc.isActive)
+        const platformKey = accountType === 'company' ? 'linkedin-company' : 'linkedin'
+        const account = accounts.accounts?.find(acc => acc.platform === platformKey && acc.isActive)
+        isConnected = !!account
+      } else {
+        isConnected = connectedAccounts[platform]
+      }
+
+      // If disconnecting, find account and disconnect
+      if (isConnected) {
+        const accounts = await accountAPI.getAccounts()
+        // For LinkedIn, check account type
+        let account;
+        if (platform === 'linkedin' && accountType === 'company') {
+          account = accounts.accounts?.find(acc => acc.platform === 'linkedin-company' && acc.isActive)
+        } else if (platform === 'linkedin' && accountType === 'personal') {
+          account = accounts.accounts?.find(acc => acc.platform === 'linkedin' && acc.isActive)
+        } else if (platform === 'linkedin') {
+          // Fallback: try to find personal account first, then company
+          account = accounts.accounts?.find(acc => acc.platform === 'linkedin' && acc.isActive) ||
+                   accounts.accounts?.find(acc => acc.platform === 'linkedin-company' && acc.isActive)
+        } else {
+          account = accounts.accounts?.find(acc => acc.platform === platform && acc.isActive)
+        }
+        
         if (account) {
           await accountAPI.disconnectAccount(account._id)
           addNotification(`${platform.charAt(0).toUpperCase() + platform.slice(1)} disconnected`, 'info')
@@ -109,7 +150,11 @@ export function AppProvider({ children }) {
         let response;
         switch (platform) {
           case 'linkedin':
-            response = await accountAPI.getLinkedInAuthUrl();
+            if (accountType === 'company') {
+              response = await accountAPI.getLinkedInCompanyAuthUrl();
+            } else {
+              response = await accountAPI.getLinkedInAuthUrl();
+            }
             break;
           case 'facebook':
             response = await accountAPI.getFacebookAuthUrl();
@@ -122,7 +167,6 @@ export function AppProvider({ children }) {
         }
 
         if (response.success && response.url) {
-          // Manually redirect to OAuth URL
           window.location.href = response.url;
         } else {
           throw new Error(response.message || 'Failed to get OAuth URL');
@@ -132,7 +176,7 @@ export function AppProvider({ children }) {
       await loadAccounts()
       updatePlatformSelectors(connectedAccounts)
     } catch (error) {
-      addNotification(`Failed to ${connectedAccounts[platform] ? 'disconnect' : 'connect'} ${platform}: ${error.message}`, 'error')
+      addNotification(`Failed to ${isConnected ? 'disconnect' : 'connect'} ${platform}: ${error.message}`, 'error')
       console.error('Error toggling connection:', error)
     }
   }
