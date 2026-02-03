@@ -7,7 +7,7 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
   const [caption, setCaption] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
-  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null })
+  const [selectedPages, setSelectedPages] = useState({ facebook: [], instagram: [], linkedin: [] })
   const [loading, setLoading] = useState(false)
 
   // Update date when initialDate prop changes (Quick Scheduling)
@@ -23,7 +23,7 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
       setCaption('')
       setDate('')
       setTime('')
-      setSelectedPages({ facebook: null, instagram: null })
+      setSelectedPages({ facebook: [], instagram: [], linkedin: [] })
       setLoading(false)
     }
   }, [open])
@@ -42,7 +42,7 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
         onPostCreated()
       }
       setCaption(''); setDate(''); setTime('')
-      setSelectedPages({ facebook: null, instagram: null })
+      setSelectedPages({ facebook: [], instagram: [], linkedin: [] })
       onClose?.()
     } catch (err) {
       // Error handling - show alert and keep modal open
@@ -95,7 +95,16 @@ export default function ScheduleModal({ open, onClose, initialDate, onPostCreate
             <PageSelector
               platform="instagram"
               value={selectedPages.instagram}
-              onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
+              onChange={(accountIds) => setSelectedPages({ ...selectedPages, instagram: accountIds })}
+            />
+          )}
+
+          {/* Page Selection for LinkedIn */}
+          {selectedModalPlatforms.includes('linkedin') && (
+            <PageSelector
+              platform="linkedin"
+              value={selectedPages.linkedin}
+              onChange={(pageIds) => setSelectedPages({ ...selectedPages, linkedin: pageIds })}
             />
           )}
 

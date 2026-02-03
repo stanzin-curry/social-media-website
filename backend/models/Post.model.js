@@ -21,9 +21,9 @@ const postSchema = new mongoose.Schema({
     required: true
   }],
   selectedPages: {
-    facebook: String,    // Selected Facebook Page ID
-    instagram: String,   // Selected Instagram Account ID
-    linkedin: String     // Selected LinkedIn Company Page ID
+    facebook: [String],    // Array of selected Facebook Page IDs
+    instagram: [String],   // Array of selected Instagram Account IDs
+    linkedin: [String]     // Array of selected LinkedIn Company Page IDs
   },
   scheduledDate: {
     type: Date,
