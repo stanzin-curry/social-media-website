@@ -60,6 +60,7 @@ export const createPostFromCreateEndpoint = async (req, res) => {
           : req.body.selectedPages;
         
         // Validate selected pages exist in user's Account
+        // Handle both array (new) and string (legacy) formats
         if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
           const facebookAccount = await Account.findOne({
             user: userId,
@@ -68,37 +69,96 @@ export const createPostFromCreateEndpoint = async (req, res) => {
           });
 
           if (facebookAccount && facebookAccount.pages && facebookAccount.pages.length > 0) {
-            // Validate Facebook page selection
+            // Validate Facebook page selection (handle arrays)
             if (parsedSelectedPages.facebook) {
-              const pageExists = facebookAccount.pages.some(
-                page => page.id === parsedSelectedPages.facebook
-              );
-              if (!pageExists) {
-                return res.status(400).json({
-                  success: false,
-                  message: `Selected Facebook page (${parsedSelectedPages.facebook}) not found in your connected pages`
-                });
+              const facebookPages = Array.isArray(parsedSelectedPages.facebook) 
+                ? parsedSelectedPages.facebook 
+                : [parsedSelectedPages.facebook];
+              
+              const validPages = [];
+              for (const pageId of facebookPages) {
+                const pageExists = facebookAccount.pages.some(
+                  page => page.id === pageId
+                );
+                if (pageExists) {
+                  validPages.push(pageId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected Facebook page (${pageId}) not found in your connected pages`
+                  });
+                }
               }
-              selectedPages.facebook = parsedSelectedPages.facebook;
+              selectedPages.facebook = validPages.length > 0 ? validPages : undefined;
             }
 
-            // Validate Instagram account selection
+            // Validate Instagram account selection (handle arrays)
             if (parsedSelectedPages.instagram) {
-              const instagramExists = facebookAccount.pages.some(
-                page => page.instagramAccount && page.instagramAccount.id === parsedSelectedPages.instagram
-              );
-              if (!instagramExists) {
-                return res.status(400).json({
-                  success: false,
-                  message: `Selected Instagram account (${parsedSelectedPages.instagram}) not found in your connected accounts`
-                });
+              const instagramAccounts = Array.isArray(parsedSelectedPages.instagram) 
+                ? parsedSelectedPages.instagram 
+                : [parsedSelectedPages.instagram];
+              
+              const validAccounts = [];
+              for (const accountId of instagramAccounts) {
+                const instagramExists = facebookAccount.pages.some(
+                  page => page.instagramAccount && page.instagramAccount.id === accountId
+                );
+                if (instagramExists) {
+                  validAccounts.push(accountId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected Instagram account (${accountId}) not found in your connected accounts`
+                  });
+                }
               }
-              selectedPages.instagram = parsedSelectedPages.instagram;
+              selectedPages.instagram = validAccounts.length > 0 ? validAccounts : undefined;
             }
           } else if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
             return res.status(400).json({
               success: false,
               message: 'No Facebook pages found. Please reconnect your Facebook account.'
+            });
+          }
+        }
+        
+        // Validate LinkedIn page selection (handle arrays)
+        if (parsedSelectedPages.linkedin) {
+          const linkedInAccount = await Account.findOne({
+            user: userId,
+            platform: 'linkedin-company',
+            isActive: true
+          });
+          
+          if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+            const linkedInPages = Array.isArray(parsedSelectedPages.linkedin) 
+              ? parsedSelectedPages.linkedin 
+              : [parsedSelectedPages.linkedin];
+            
+            const validPages = [];
+            for (const pageId of linkedInPages) {
+              // 'personal' is a special value for personal profile
+              if (pageId === 'personal') {
+                validPages.push(pageId);
+              } else {
+                const pageExists = linkedInAccount.pages.some(
+                  page => page.id === pageId
+                );
+                if (pageExists) {
+                  validPages.push(pageId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
+                  });
+                }
+              }
+            }
+            selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
+          } else if (parsedSelectedPages.linkedin && !parsedSelectedPages.linkedin.includes('personal')) {
+            return res.status(400).json({
+              success: false,
+              message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
             });
           }
         }
@@ -183,6 +243,7 @@ export const createPost = async (req, res) => {
           : req.body.selectedPages;
         
         // Validate selected pages exist in user's Account
+        // Handle both array (new) and string (legacy) formats
         if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
           const facebookAccount = await Account.findOne({
             user: userId,
@@ -191,37 +252,96 @@ export const createPost = async (req, res) => {
           });
 
           if (facebookAccount && facebookAccount.pages && facebookAccount.pages.length > 0) {
-            // Validate Facebook page selection
+            // Validate Facebook page selection (handle arrays)
             if (parsedSelectedPages.facebook) {
-              const pageExists = facebookAccount.pages.some(
-                page => page.id === parsedSelectedPages.facebook
-              );
-              if (!pageExists) {
-                return res.status(400).json({
-                  success: false,
-                  message: `Selected Facebook page (${parsedSelectedPages.facebook}) not found in your connected pages`
-                });
+              const facebookPages = Array.isArray(parsedSelectedPages.facebook) 
+                ? parsedSelectedPages.facebook 
+                : [parsedSelectedPages.facebook];
+              
+              const validPages = [];
+              for (const pageId of facebookPages) {
+                const pageExists = facebookAccount.pages.some(
+                  page => page.id === pageId
+                );
+                if (pageExists) {
+                  validPages.push(pageId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected Facebook page (${pageId}) not found in your connected pages`
+                  });
+                }
               }
-              selectedPages.facebook = parsedSelectedPages.facebook;
+              selectedPages.facebook = validPages.length > 0 ? validPages : undefined;
             }
 
-            // Validate Instagram account selection
+            // Validate Instagram account selection (handle arrays)
             if (parsedSelectedPages.instagram) {
-              const instagramExists = facebookAccount.pages.some(
-                page => page.instagramAccount && page.instagramAccount.id === parsedSelectedPages.instagram
-              );
-              if (!instagramExists) {
-                return res.status(400).json({
-                  success: false,
-                  message: `Selected Instagram account (${parsedSelectedPages.instagram}) not found in your connected accounts`
-                });
+              const instagramAccounts = Array.isArray(parsedSelectedPages.instagram) 
+                ? parsedSelectedPages.instagram 
+                : [parsedSelectedPages.instagram];
+              
+              const validAccounts = [];
+              for (const accountId of instagramAccounts) {
+                const instagramExists = facebookAccount.pages.some(
+                  page => page.instagramAccount && page.instagramAccount.id === accountId
+                );
+                if (instagramExists) {
+                  validAccounts.push(accountId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected Instagram account (${accountId}) not found in your connected accounts`
+                  });
+                }
               }
-              selectedPages.instagram = parsedSelectedPages.instagram;
+              selectedPages.instagram = validAccounts.length > 0 ? validAccounts : undefined;
             }
           } else if (parsedSelectedPages.facebook || parsedSelectedPages.instagram) {
             return res.status(400).json({
               success: false,
               message: 'No Facebook pages found. Please reconnect your Facebook account.'
+            });
+          }
+        }
+        
+        // Validate LinkedIn page selection (handle arrays)
+        if (parsedSelectedPages.linkedin) {
+          const linkedInAccount = await Account.findOne({
+            user: userId,
+            platform: 'linkedin-company',
+            isActive: true
+          });
+          
+          if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+            const linkedInPages = Array.isArray(parsedSelectedPages.linkedin) 
+              ? parsedSelectedPages.linkedin 
+              : [parsedSelectedPages.linkedin];
+            
+            const validPages = [];
+            for (const pageId of linkedInPages) {
+              // 'personal' is a special value for personal profile
+              if (pageId === 'personal') {
+                validPages.push(pageId);
+              } else {
+                const pageExists = linkedInAccount.pages.some(
+                  page => page.id === pageId
+                );
+                if (pageExists) {
+                  validPages.push(pageId);
+                } else {
+                  return res.status(400).json({
+                    success: false,
+                    message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
+                  });
+                }
+              }
+            }
+            selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
+          } else if (parsedSelectedPages.linkedin && !parsedSelectedPages.linkedin.includes('personal')) {
+            return res.status(400).json({
+              success: false,
+              message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
             });
           }
         }

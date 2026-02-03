@@ -18,7 +18,7 @@ export default function CreatePost() {
   const [facebookActive, setFacebookActive] = useState(false);
   const [linkedinActive, setLinkedinActive] = useState(false);
   const [instagramActive, setInstagramActive] = useState(false);
-  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null, linkedin: null });
+  const [selectedPages, setSelectedPages] = useState({ facebook: [], instagram: [], linkedin: [] });
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);

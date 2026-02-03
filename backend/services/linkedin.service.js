@@ -7,7 +7,7 @@ import path from 'path';
  * @param {string} accessToken - LinkedIn access token
  * @param {string} authorUrn - LinkedIn author URN (e.g., "urn:li:person:123456")
  * @param {string} text - Post text
- * @param {string} mediaUrl - Optional media URL
+ * @param {string|Array} mediaUrl - Optional media URL (string) or array of media URLs for multiple images
  * @returns {Promise<Object>} Published post data
  */
 export const publishToLinkedIn = async (accessToken, authorUrn, text, mediaUrl = null) => {
@@ -30,78 +30,93 @@ export const publishToLinkedIn = async (accessToken, authorUrn, text, mediaUrl =
 
     // Add media if provided
     if (mediaUrl) {
-      // First, register the image
-      const registerResponse = await axios.post(
-        'https://api.linkedin.com/v2/assets?action=registerUpload',
-        {
-          registerUploadRequest: {
-            recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
-            owner: authorUrn,
-            serviceRelationships: [{
-              relationshipType: 'OWNER',
-              identifier: 'urn:li:userGeneratedContent'
-            }]
+      // Check if mediaUrl is an array (multiple images) or single string
+      const mediaUrls = Array.isArray(mediaUrl) ? mediaUrl : [mediaUrl];
+      
+      console.log(`[LinkedIn] Uploading ${mediaUrls.length} image(s)`);
+      
+      const mediaArray = [];
+      
+      // Process each image
+      for (let i = 0; i < mediaUrls.length; i++) {
+        const url = mediaUrls[i];
+        
+        // First, register the image
+        const registerResponse = await axios.post(
+          'https://api.linkedin.com/v2/assets?action=registerUpload',
+          {
+            registerUploadRequest: {
+              recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+              owner: authorUrn,
+              serviceRelationships: [{
+                relationshipType: 'OWNER',
+                identifier: 'urn:li:userGeneratedContent'
+              }]
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
           }
-        },
-        {
+        );
+
+        const uploadUrl = registerResponse.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
+        const asset = registerResponse.data.value.asset;
+
+        // Get image data - handle both local files and URLs
+        let imageData;
+        const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1') || (!url.startsWith('http'));
+        
+        if (isLocalhost || !url.startsWith('http')) {
+          // Local file - read from disk
+          let filePath;
+          if (url.startsWith('http')) {
+            // Extract path from localhost URL and decode URL-encoded characters
+            const urlObj = new URL(url);
+            const decodedPath = decodeURIComponent(urlObj.pathname);
+            filePath = path.join(process.cwd(), decodedPath);
+          } else {
+            // It's already a file path - decode URL-encoded characters
+            const cleanPath = url.replace(/^[/\\]+/, '');
+            const decodedPath = decodeURIComponent(cleanPath);
+            filePath = path.join(process.cwd(), decodedPath);
+          }
+          
+          if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found at: ${filePath}`);
+          }
+          
+          imageData = fs.readFileSync(filePath);
+        } else {
+          // Public URL - fetch the image
+          const imageResponse = await axios.get(url, {
+            responseType: 'arraybuffer'
+          });
+          imageData = Buffer.from(imageResponse.data);
+        }
+
+        // Upload the image binary data
+        await axios.put(uploadUrl, imageData, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/octet-stream'
           }
-        }
-      );
-
-      const uploadUrl = registerResponse.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
-      const asset = registerResponse.data.value.asset;
-
-      // Get image data - handle both local files and URLs
-      let imageData;
-      const isLocalhost = mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1') || (!mediaUrl.startsWith('http'));
-      
-      if (isLocalhost || !mediaUrl.startsWith('http')) {
-        // Local file - read from disk
-        let filePath;
-        if (mediaUrl.startsWith('http')) {
-          // Extract path from localhost URL and decode URL-encoded characters
-          const urlObj = new URL(mediaUrl);
-          const decodedPath = decodeURIComponent(urlObj.pathname);
-          filePath = path.join(process.cwd(), decodedPath);
-        } else {
-          // It's already a file path - decode URL-encoded characters
-          const cleanPath = mediaUrl.replace(/^[/\\]+/, '');
-          const decodedPath = decodeURIComponent(cleanPath);
-          filePath = path.join(process.cwd(), decodedPath);
-        }
-        
-        if (!fs.existsSync(filePath)) {
-          throw new Error(`File not found at: ${filePath}`);
-        }
-        
-        imageData = fs.readFileSync(filePath);
-      } else {
-        // Public URL - fetch the image
-        const imageResponse = await axios.get(mediaUrl, {
-          responseType: 'arraybuffer'
         });
-        imageData = Buffer.from(imageResponse.data);
+
+        // Add to media array
+        mediaArray.push({
+          status: 'READY',
+          media: asset,
+          title: {
+            text: `Image ${i + 1}`
+          }
+        });
       }
 
-      // Upload the image binary data
-      await axios.put(uploadUrl, imageData, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/octet-stream'
-        }
-      });
-
-      // Add media to post
-      postData.specificContent['com.linkedin.ugc.ShareContent'].media = [{
-        status: 'READY',
-        media: asset,
-        title: {
-          text: 'Shared Image'
-        }
-      }];
+      // Add all media to post
+      postData.specificContent['com.linkedin.ugc.ShareContent'].media = mediaArray;
     }
 
     // Publish the post
