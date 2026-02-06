@@ -124,42 +124,56 @@ export const createPostFromCreateEndpoint = async (req, res) => {
         
         // Validate LinkedIn page selection (handle arrays)
         if (parsedSelectedPages.linkedin) {
-          const linkedInAccount = await Account.findOne({
-            user: userId,
-            platform: 'linkedin-company',
-            isActive: true
-          });
+          // Check if linkedin is actually selected (not empty array)
+          const hasLinkedInSelection = Array.isArray(parsedSelectedPages.linkedin) 
+            ? parsedSelectedPages.linkedin.length > 0
+            : parsedSelectedPages.linkedin;
           
-          if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+          if (hasLinkedInSelection) {
+            const linkedInAccount = await Account.findOne({
+              user: userId,
+              platform: 'linkedin-company',
+              isActive: true
+            });
+            
             const linkedInPages = Array.isArray(parsedSelectedPages.linkedin) 
               ? parsedSelectedPages.linkedin 
               : [parsedSelectedPages.linkedin];
             
-            const validPages = [];
-            for (const pageId of linkedInPages) {
-              // 'personal' is a special value for personal profile
-              if (pageId === 'personal') {
-                validPages.push(pageId);
-              } else {
-                const pageExists = linkedInAccount.pages.some(
-                  page => page.id === pageId
-                );
-                if (pageExists) {
+            if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+              const validPages = [];
+              for (const pageId of linkedInPages) {
+                // 'personal' is a special value for personal profile
+                if (pageId === 'personal') {
                   validPages.push(pageId);
                 } else {
-                  return res.status(400).json({
-                    success: false,
-                    message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
-                  });
+                  const pageExists = linkedInAccount.pages.some(
+                    page => page.id === pageId
+                  );
+                  if (pageExists) {
+                    validPages.push(pageId);
+                  } else {
+                    return res.status(400).json({
+                      success: false,
+                      message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
+                    });
+                  }
                 }
               }
+              selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
+            } else {
+              // Check if any non-personal pages were selected
+              const hasNonPersonalSelection = linkedInPages.some(pageId => pageId !== 'personal');
+              
+              if (hasNonPersonalSelection) {
+                return res.status(400).json({
+                  success: false,
+                  message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
+                });
+              }
+              // If only personal profile selected, that's fine
+              selectedPages.linkedin = linkedInPages.filter(pageId => pageId === 'personal');
             }
-            selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
-          } else if (parsedSelectedPages.linkedin && !parsedSelectedPages.linkedin.includes('personal')) {
-            return res.status(400).json({
-              success: false,
-              message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
-            });
           }
         }
       } catch (e) {
@@ -307,42 +321,56 @@ export const createPost = async (req, res) => {
         
         // Validate LinkedIn page selection (handle arrays)
         if (parsedSelectedPages.linkedin) {
-          const linkedInAccount = await Account.findOne({
-            user: userId,
-            platform: 'linkedin-company',
-            isActive: true
-          });
+          // Check if linkedin is actually selected (not empty array)
+          const hasLinkedInSelection = Array.isArray(parsedSelectedPages.linkedin) 
+            ? parsedSelectedPages.linkedin.length > 0
+            : parsedSelectedPages.linkedin;
           
-          if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+          if (hasLinkedInSelection) {
+            const linkedInAccount = await Account.findOne({
+              user: userId,
+              platform: 'linkedin-company',
+              isActive: true
+            });
+            
             const linkedInPages = Array.isArray(parsedSelectedPages.linkedin) 
               ? parsedSelectedPages.linkedin 
               : [parsedSelectedPages.linkedin];
             
-            const validPages = [];
-            for (const pageId of linkedInPages) {
-              // 'personal' is a special value for personal profile
-              if (pageId === 'personal') {
-                validPages.push(pageId);
-              } else {
-                const pageExists = linkedInAccount.pages.some(
-                  page => page.id === pageId
-                );
-                if (pageExists) {
+            if (linkedInAccount && linkedInAccount.pages && linkedInAccount.pages.length > 0) {
+              const validPages = [];
+              for (const pageId of linkedInPages) {
+                // 'personal' is a special value for personal profile
+                if (pageId === 'personal') {
                   validPages.push(pageId);
                 } else {
-                  return res.status(400).json({
-                    success: false,
-                    message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
-                  });
+                  const pageExists = linkedInAccount.pages.some(
+                    page => page.id === pageId
+                  );
+                  if (pageExists) {
+                    validPages.push(pageId);
+                  } else {
+                    return res.status(400).json({
+                      success: false,
+                      message: `Selected LinkedIn page (${pageId}) not found in your connected pages`
+                    });
+                  }
                 }
               }
+              selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
+            } else {
+              // Check if any non-personal pages were selected
+              const hasNonPersonalSelection = linkedInPages.some(pageId => pageId !== 'personal');
+              
+              if (hasNonPersonalSelection) {
+                return res.status(400).json({
+                  success: false,
+                  message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
+                });
+              }
+              // If only personal profile selected, that's fine
+              selectedPages.linkedin = linkedInPages.filter(pageId => pageId === 'personal');
             }
-            selectedPages.linkedin = validPages.length > 0 ? validPages : undefined;
-          } else if (parsedSelectedPages.linkedin && !parsedSelectedPages.linkedin.includes('personal')) {
-            return res.status(400).json({
-              success: false,
-              message: 'No LinkedIn company pages found. Please connect your LinkedIn company account or select personal profile.'
-            });
           }
         }
       } catch (e) {
