@@ -197,7 +197,8 @@ export default function CreatePost() {
         formData.append("media", file);
       });
 
-      const response = await fetch("http://localhost:4000/api/posts/create", {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${apiUrl}/posts/create`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
