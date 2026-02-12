@@ -1,4 +1,4 @@
-5eimport React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaFacebook, FaLinkedin, FaInstagram, FaCalendar, FaClock, FaImage, FaTimes, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
