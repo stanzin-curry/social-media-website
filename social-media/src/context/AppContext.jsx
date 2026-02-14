@@ -3,7 +3,7 @@ import { accountAPI } from '../api/account.api.js'
 import { postAPI } from '../api/post.api.js'
 
 const AppContext = createContext()
-
+//hey
 export function useApp() {
   return useContext(AppContext)
 }
@@ -259,7 +259,7 @@ export function AppProvider({ children }) {
 
   const publishScheduledPost = async (postId) => {
     // This is now handled by the cron scheduler on the backend
-    // We just reload posts to get updated status
+    // We just reload posts to get updated status hehehe
     await loadPosts()
   }
 
