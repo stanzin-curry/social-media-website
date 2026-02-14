@@ -22,8 +22,23 @@ export const createPostFromCreateEndpoint = async (req, res) => {
       });
     }
 
-    // Combine date and time
-    const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+    // Handle scheduled date: if it's already an ISO string, use it directly
+    // Otherwise, combine date and time (for backward compatibility)
+    let scheduledAt;
+    if (scheduledDate.includes('T') || scheduledDate.includes('Z')) {
+      // Already an ISO string from frontend
+      scheduledAt = new Date(scheduledDate);
+    } else {
+      // Legacy format: combine date and time
+      scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+    }
+    
+    if (isNaN(scheduledAt.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid scheduled date format'
+      });
+    }
     
     if (scheduledAt <= new Date()) {
       return res.status(400).json({
@@ -218,8 +233,23 @@ export const createPost = async (req, res) => {
       });
     }
 
-    // Combine date and time
-    const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime || '00:00'}`);
+    // Handle scheduled date: if it's already an ISO string, use it directly
+    // Otherwise, combine date and time (for backward compatibility)
+    let scheduledDateTime;
+    if (scheduledDate.includes('T') || scheduledDate.includes('Z')) {
+      // Already an ISO string from frontend
+      scheduledDateTime = new Date(scheduledDate);
+    } else {
+      // Legacy format: combine date and time
+      scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime || '00:00'}`);
+    }
+    
+    if (isNaN(scheduledDateTime.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid scheduled date format'
+      });
+    }
     
     if (scheduledDateTime <= new Date()) {
       return res.status(400).json({

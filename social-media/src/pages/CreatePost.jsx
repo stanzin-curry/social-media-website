@@ -18,7 +18,7 @@ export default function CreatePost() {
   const [facebookActive, setFacebookActive] = useState(false);
   const [linkedinActive, setLinkedinActive] = useState(false);
   const [instagramActive, setInstagramActive] = useState(false);
-  const [selectedPages, setSelectedPages] = useState({ facebook: [], instagram: [], linkedin: [] });
+  const [selectedPages, setSelectedPages] = useState({ facebook: null, instagram: null, linkedin: null });
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -184,7 +184,11 @@ export default function CreatePost() {
       const formData = new FormData();
       formData.append("content", caption);
       formData.append("platforms", JSON.stringify(platforms));
-      formData.append("scheduledDate", date);
+      
+      // Combine date and time, create Date object in user's local timezone, then send as ISO string
+      const scheduledDateTime = new Date(`${date}T${time}`);
+      formData.append("scheduledDate", scheduledDateTime.toISOString());
+      // Keep scheduledTime for backward compatibility, but backend will use ISO string if available
       formData.append("scheduledTime", time);
       
       // Add selectedPages if any pages are selected
@@ -197,8 +201,7 @@ export default function CreatePost() {
         formData.append("media", file);
       });
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-      const response = await fetch(`${apiUrl}/posts/create`, {
+      const response = await fetch("http://localhost:4000/api/posts/create", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
