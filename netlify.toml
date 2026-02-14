@@ -1,7 +1,7 @@
 [build]
   base = "social-media"
   command = "npm install && npm run build"
-  publish = "social-media/dist"
+  publish = "dist"
 
 [[redirects]]
   from = "/*"
