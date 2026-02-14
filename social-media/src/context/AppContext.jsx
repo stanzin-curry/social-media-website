@@ -3,7 +3,7 @@ import { accountAPI } from '../api/account.api.js'
 import { postAPI } from '../api/post.api.js'
 
 const AppContext = createContext()
-
+//hey
 export function useApp() {
   return useContext(AppContext)
 }
