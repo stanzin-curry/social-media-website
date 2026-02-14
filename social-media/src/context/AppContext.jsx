@@ -259,7 +259,7 @@ export function AppProvider({ children }) {
 
   const publishScheduledPost = async (postId) => {
     // This is now handled by the cron scheduler on the backend
-    // We just reload posts to get updated status
+    // We just reload posts to get updated status hehehe
     await loadPosts()
   }
 
