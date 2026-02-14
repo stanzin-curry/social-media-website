@@ -211,6 +211,7 @@ export function AppProvider({ children }) {
     if (!caption || !date || !time || !platforms?.length) {
       throw new Error('Please fill in all fields and select at least one platform')
     }
+    // Combine date and time, create Date object in user's local timezone, then convert to ISO string
     const scheduledDateTime = new Date(`${date}T${time}`)
     if (scheduledDateTime <= new Date()) {
       throw new Error('Please select a future date and time')
@@ -237,8 +238,8 @@ export function AppProvider({ children }) {
 
       const response = await postAPI.createPost({
         caption,
-        scheduledDate: date,
-        scheduledTime: time,
+        scheduledDate: scheduledDateTime.toISOString(), // Send as ISO string for proper timezone handling
+        scheduledTime: time, // Keep for backward compatibility
         platforms: [...platforms],
         media: mediaFile,
         selectedPages
