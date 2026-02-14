@@ -81,7 +81,54 @@ export const publishToInstagram = async (accessToken, instagramAccountId, captio
       throw new Error('Failed to create media container. No creation ID returned.');
     }
 
-    // Step 2: Publish the media container
+    console.log(`[Instagram] Media container created with ID: ${creationId}. Waiting for processing...`);
+
+    // Step 2: Poll the container status until it's ready
+    // Instagram needs time to process the media before it can be published
+    let status = 'IN_PROGRESS';
+    let attempts = 0;
+    const maxAttempts = 30; // Maximum 30 attempts (5 minutes)
+    const pollInterval = 10000; // Check every 10 seconds
+
+    while (status === 'IN_PROGRESS' && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      attempts++;
+
+      try {
+        const statusResponse = await axios.get(
+          `https://graph.facebook.com/v19.0/${creationId}`,
+          {
+            params: {
+              fields: 'status_code',
+              access_token: accessToken
+            }
+          }
+        );
+
+        status = statusResponse.data.status_code;
+        console.log(`[Instagram] Container status (attempt ${attempts}/${maxAttempts}): ${status}`);
+
+        if (status === 'ERROR') {
+          throw new Error('Media container processing failed');
+        }
+      } catch (error) {
+        // If status check fails, continue polling (might be transient)
+        console.warn(`[Instagram] Status check failed (attempt ${attempts}):`, error.message);
+        // Continue polling unless it's a clear error
+        if (error.response?.data?.error?.code === 100) {
+          // Invalid container ID - stop polling
+          throw new Error(`Invalid container ID: ${creationId}`);
+        }
+      }
+    }
+
+    if (status !== 'FINISHED') {
+      throw new Error(`Media container not ready after ${attempts} attempts (${(attempts * pollInterval) / 1000} seconds). Final status: ${status}`);
+    }
+
+    console.log(`[Instagram] Media container ready after ${attempts} attempts. Publishing...`);
+
+    // Step 3: Publish the media container
     const publishResponse = await axios.post(
       `https://graph.facebook.com/v19.0/${instagramAccountId}/media_publish`,
       {
