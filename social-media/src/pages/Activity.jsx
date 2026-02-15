@@ -34,17 +34,25 @@ export default function Activity(){
     return 'instagram' // default
   }
 
-  // Check if post has Facebook and can refresh stats
-  const canRefreshStats = (post) => {
-    return post.publishedPlatforms?.some(pp => pp.platform === 'facebook' && pp.status === 'success')
+  // Check which platforms can refresh stats
+  const getRefreshablePlatforms = (post) => {
+    if (!post.publishedPlatforms) return []
+    return post.publishedPlatforms
+      .filter(pp => pp.status === 'success' && pp.platformPostId && pp.platformPostId.trim() !== '')
+      .map(pp => pp.platform)
   }
 
-  const handleRefreshAnalytics = async (postId) => {
-    setRefreshing(prev => ({ ...prev, [postId]: true }))
+  const handleRefreshAnalytics = async (postId, platform = null) => {
+    const refreshKey = platform ? `${postId}-${platform}` : postId
+    setRefreshing(prev => ({ ...prev, [refreshKey]: true }))
     try {
-      const response = await postAPI.refreshAnalytics(postId)
+      const url = platform 
+        ? `/posts/${postId}/refresh-analytics?platform=${platform}`
+        : `/posts/${postId}/refresh-analytics`
+      const response = await postAPI.refreshAnalytics(postId, platform)
       if (response.success) {
-        addNotification('Analytics refreshed successfully', 'success')
+        const platformName = platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'All platforms'
+        addNotification(`Analytics refreshed successfully for ${platformName}`, 'success')
         // Reload posts to get updated analytics
         await loadPosts()
       } else {
@@ -54,7 +62,7 @@ export default function Activity(){
       console.error('Failed to refresh analytics:', error)
       addNotification(error.message || 'Failed to refresh analytics', 'error')
     } finally {
-      setRefreshing(prev => ({ ...prev, [postId]: false }))
+      setRefreshing(prev => ({ ...prev, [refreshKey]: false }))
     }
   }
 
@@ -144,7 +152,7 @@ export default function Activity(){
                             <span><i className="fas fa-share text-green-400" /> {analytics.shares || 0}</span>
                           )}
                         </div>
-                        {canRefreshStats(p) && (
+                        {getRefreshablePlatforms(p).length > 0 && (
                           <button
                             onClick={() => handleRefreshAnalytics(postId)}
                             disabled={refreshing[postId]}
@@ -162,6 +170,8 @@ export default function Activity(){
                         {successfulPlatforms.map((pubPlatform, idx) => {
                           const platformInfo = getPlatformIcon(pubPlatform.platform)
                           const PlatformIcon = platformInfo.icon
+                          const refreshKey = `${postId}-${pubPlatform.platform}`
+                          const canRefresh = pubPlatform.platformPostId && pubPlatform.platformPostId.trim() !== ''
                           // For now, show combined stats for all platforms
                           // In future, we can store analytics per platform
                           return (
@@ -170,21 +180,34 @@ export default function Activity(){
                                 <PlatformIcon className={`text-sm ${platformInfo.gradient.includes('blue') ? 'text-blue-600' : platformInfo.gradient.includes('pink') ? 'text-pink-500' : 'text-blue-700'}`} />
                                 <span className="text-[10px] sm:text-xs font-medium text-gray-700 capitalize">{pubPlatform.platform}</span>
                               </div>
-                              <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs text-gray-600">
-                                <span><i className="fas fa-eye text-blue-400" /> {analytics.reach?.toLocaleString() || 0}</span>
-                                <span><i className="fas fa-heart text-red-400" /> {analytics.likes || 0}</span>
-                                <span><i className="fas fa-comment text-blue-400" /> {analytics.comments || 0}</span>
+                              <div className="flex items-center gap-2 sm:gap-3">
+                                <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs text-gray-600">
+                                  <span><i className="fas fa-eye text-blue-400" /> {analytics.reach?.toLocaleString() || 0}</span>
+                                  <span><i className="fas fa-heart text-red-400" /> {analytics.likes || 0}</span>
+                                  <span><i className="fas fa-comment text-blue-400" /> {analytics.comments || 0}</span>
+                                </div>
+                                {canRefresh && (
+                                  <button
+                                    onClick={() => handleRefreshAnalytics(postId, pubPlatform.platform)}
+                                    disabled={refreshing[refreshKey]}
+                                    className="ml-2 px-2 py-1 bg-blue-500 text-white rounded text-[10px] sm:text-xs hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed min-h-[28px] sm:min-h-[32px]"
+                                    title={`Refresh ${pubPlatform.platform} stats`}
+                                  >
+                                    {refreshing[refreshKey] ? '...' : '↻'}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )
                         })}
-                        {canRefreshStats(p) && (
+                        {/* Refresh all button */}
+                        {getRefreshablePlatforms(p).length > 0 && (
                           <button
                             onClick={() => handleRefreshAnalytics(postId)}
                             disabled={refreshing[postId]}
                             className="w-full sm:w-auto px-2 py-1 bg-blue-500 text-white rounded text-[10px] sm:text-xs hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed min-h-[32px] sm:min-h-[36px]"
                           >
-                            {refreshing[postId] ? 'Refreshing...' : 'Refresh Stats (Facebook)'}
+                            {refreshing[postId] ? 'Refreshing All...' : 'Refresh All Stats'}
                           </button>
                         )}
                       </div>

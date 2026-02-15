@@ -262,3 +262,116 @@ export const getInstagramAccountInfo = async (accessToken, instagramAccountId) =
   }
 };
 
+/**
+ * Get Instagram post analytics/insights
+ * @param {string} mediaId - Instagram Media ID
+ * @param {string} accessToken - Instagram access token (Page access token)
+ * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
+ */
+export const getInstagramPostStats = async (mediaId, accessToken) => {
+  // Development/Testing Mode: Return mock data if ENABLE_MOCK_ANALYTICS is set
+  if (process.env.ENABLE_MOCK_ANALYTICS === 'true' || (process.env.NODE_ENV === 'development' && process.env.USE_MOCK_ANALYTICS === 'true')) {
+    console.log(`[Instagram] Using MOCK analytics data for post ${mediaId} (Development Mode)`);
+    const baseLikes = Math.floor(Math.random() * 200) + 20;
+    const baseComments = Math.floor(Math.random() * 30) + 3;
+    const baseShares = 0; // Instagram doesn't have shares in the same way
+    const baseReach = Math.floor(baseLikes * (1.2 + Math.random() * 0.3));
+    
+    return {
+      likes: baseLikes,
+      comments: baseComments,
+      shares: baseShares,
+      reach: baseReach
+    };
+  }
+
+  try {
+    // Get basic post metrics (likes, comments)
+    const postResponse = await axios.get(
+      `https://graph.facebook.com/v19.0/${mediaId}`,
+      {
+        params: {
+          fields: 'like_count,comments_count',
+          access_token: accessToken
+        }
+      }
+    );
+
+    const postData = postResponse.data;
+    
+    // Get basic metrics
+    const likes = postData.like_count || 0;
+    const comments = postData.comments_count || 0;
+    const shares = 0; // Instagram doesn't provide share count via API
+    
+    // Try to get insights (reach/impressions) - requires read_insights permission
+    let reach = 0;
+    try {
+      const insightsResponse = await axios.get(
+        `https://graph.facebook.com/v19.0/${mediaId}/insights`,
+        {
+          params: {
+            metric: 'impressions,reach',
+            access_token: accessToken
+          }
+        }
+      );
+      
+      if (insightsResponse.data?.data && insightsResponse.data.data.length > 0) {
+        // Find reach metric (prefer reach over impressions)
+        const reachMetric = insightsResponse.data.data.find(m => m.name === 'reach');
+        const impressionsMetric = insightsResponse.data.data.find(m => m.name === 'impressions');
+        
+        if (reachMetric && reachMetric.values && reachMetric.values.length > 0) {
+          reach = reachMetric.values[0].value || 0;
+        } else if (impressionsMetric && impressionsMetric.values && impressionsMetric.values.length > 0) {
+          reach = impressionsMetric.values[0].value || 0;
+        }
+      }
+    } catch (insightsError) {
+      const errorCode = insightsError.response?.data?.error?.code;
+      const errorType = insightsError.response?.data?.error?.type;
+      const errorMessage = insightsError.response?.data?.error?.message || insightsError.message;
+      
+      // Check if it's a permissions error for insights
+      if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
+        // Don't throw - just log and continue with reach = 0
+        console.warn(`[Instagram] Insights permission missing for post ${mediaId}. The read_insights permission requires Facebook App Review approval. Basic stats (likes, comments) are still available.`);
+        reach = 0;
+      } else {
+        // Insights might not be available immediately after posting or for other reasons
+        console.log(`[Instagram] Insights not available for post ${mediaId}:`, errorMessage);
+        reach = 0;
+      }
+    }
+    
+    return {
+      likes,
+      comments,
+      shares,
+      reach
+    };
+  } catch (error) {
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    const errorCode = error.response?.data?.error?.code;
+    const errorType = error.response?.data?.error?.type;
+    
+    console.error(`[Instagram] Analytics error for post ${mediaId}:`, {
+      message: errorMessage,
+      code: errorCode,
+      type: errorType,
+      fullError: error.response?.data
+    });
+    
+    // Check if it's a permissions error for basic stats
+    if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
+      const permissionError = new Error('Missing required Instagram permissions. The read_insights permission requires Facebook App Review approval. Please check your Facebook App settings and ensure the permission is approved.');
+      permissionError.isPermissionError = true;
+      permissionError.requiresAppReview = true;
+      throw permissionError;
+    }
+    
+    throw new Error(`Instagram analytics error: ${errorMessage}`);
+  }
+};
+

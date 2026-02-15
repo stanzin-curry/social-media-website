@@ -291,3 +291,112 @@ export const getLinkedInCompanyPages = async (accessToken) => {
   }
 };
 
+/**
+ * Get LinkedIn post analytics/insights
+ * @param {string} postUrn - LinkedIn Post URN (e.g., "urn:li:share:123456")
+ * @param {string} accessToken - LinkedIn access token
+ * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
+ */
+export const getLinkedInPostStats = async (postUrn, accessToken) => {
+  // Development/Testing Mode: Return mock data if ENABLE_MOCK_ANALYTICS is set
+  if (process.env.ENABLE_MOCK_ANALYTICS === 'true' || (process.env.NODE_ENV === 'development' && process.env.USE_MOCK_ANALYTICS === 'true')) {
+    console.log(`[LinkedIn] Using MOCK analytics data for post ${postUrn} (Development Mode)`);
+    const baseLikes = Math.floor(Math.random() * 50) + 5;
+    const baseComments = Math.floor(Math.random() * 10) + 1;
+    const baseShares = Math.floor(Math.random() * 5);
+    const baseReach = Math.floor(baseLikes * (2 + Math.random() * 0.5));
+    
+    return {
+      likes: baseLikes,
+      comments: baseComments,
+      shares: baseShares,
+      reach: baseReach
+    };
+  }
+
+  try {
+    // LinkedIn uses Social Actions API to get engagement metrics
+    // Extract share ID from URN (format: urn:li:share:123456)
+    const shareId = postUrn.split(':').pop();
+    
+    // Get social actions (likes, comments, shares)
+    const socialActionsResponse = await axios.get(
+      `https://api.linkedin.com/v2/socialActions/${shareId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0'
+        },
+        params: {
+          fields: 'likesSummary,commentsSummary,sharesSummary'
+        }
+      }
+    );
+
+    const socialData = socialActionsResponse.data;
+    
+    // Extract metrics
+    const likes = socialData.likesSummary?.totalLikes || 0;
+    const comments = socialData.commentsSummary?.totalComments || 0;
+    const shares = socialData.sharesSummary?.totalShares || 0;
+    
+    // Get impressions/reach - LinkedIn Analytics API
+    // Note: This requires the post to be from a Company Page and may require additional permissions
+    let reach = 0;
+    try {
+      // Try to get analytics for the post
+      // LinkedIn analytics are available through the Organizational Entity Shares Analytics API
+      // This requires the post to be from a company page
+      const analyticsResponse = await axios.get(
+        `https://api.linkedin.com/v2/organizationalEntityShareStatistics`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Restli-Protocol-Version': '2.0.0'
+          },
+          params: {
+            q: 'organizationalEntity',
+            organizationalEntity: postUrn.split(':').slice(0, 3).join(':'), // Extract entity URN
+            shares: postUrn
+          }
+        }
+      );
+      
+      if (analyticsResponse.data?.elements && analyticsResponse.data.elements.length > 0) {
+        const stats = analyticsResponse.data.elements[0];
+        reach = stats.impressionCount || stats.uniqueImpressions || 0;
+      }
+    } catch (analyticsError) {
+      // Analytics might not be available for personal posts or without proper permissions
+      // This is not a critical error - we'll just use 0 for reach
+      console.log(`[LinkedIn] Analytics not available for post ${postUrn}:`, analyticsError.response?.data?.message || analyticsError.message);
+      reach = 0;
+    }
+    
+    return {
+      likes,
+      comments,
+      shares,
+      reach
+    };
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message;
+    const errorCode = error.response?.status;
+    
+    console.error(`[LinkedIn] Analytics error for post ${postUrn}:`, {
+      message: errorMessage,
+      code: errorCode,
+      fullError: error.response?.data
+    });
+    
+    // Check if it's a permissions error
+    if (errorCode === 403 || errorCode === 401) {
+      const permissionError = new Error('Missing required LinkedIn permissions. Please reconnect your LinkedIn account to grant the necessary permissions.');
+      permissionError.isPermissionError = true;
+      throw permissionError;
+    }
+    
+    throw new Error(`LinkedIn analytics error: ${errorMessage}`);
+  }
+};
+
