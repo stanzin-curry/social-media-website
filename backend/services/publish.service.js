@@ -176,20 +176,40 @@ export const publishPost = async (post) => {
               actualPageId = pageWithInstagram.instagramAccount.id;
 
               // Use the page's access token (required for Instagram API)
-              publishResult = await publishToInstagram(
-                pageWithInstagram.accessToken,
-                pageWithInstagram.instagramAccount.id,
-                post.caption,
-                mediaUrl
-              );
+              // Pass mediaUrls array if multiple images, otherwise single mediaUrl
+              if (mediaUrls.length > 1) {
+                publishResult = await publishToInstagram(
+                  pageWithInstagram.accessToken,
+                  pageWithInstagram.instagramAccount.id,
+                  post.caption,
+                  mediaUrls
+                );
+              } else {
+                publishResult = await publishToInstagram(
+                  pageWithInstagram.accessToken,
+                  pageWithInstagram.instagramAccount.id,
+                  post.caption,
+                  mediaUrl
+                );
+              }
             } else {
               // Use default Instagram account
-              publishResult = await publishToInstagram(
-                account.accessToken,
-                account.platformUserId,
-                post.caption,
-                mediaUrl
-              );
+              // Pass mediaUrls array if multiple images, otherwise single mediaUrl
+              if (mediaUrls.length > 1) {
+                publishResult = await publishToInstagram(
+                  account.accessToken,
+                  account.platformUserId,
+                  post.caption,
+                  mediaUrls
+                );
+              } else {
+                publishResult = await publishToInstagram(
+                  account.accessToken,
+                  account.platformUserId,
+                  post.caption,
+                  mediaUrl
+                );
+              }
             }
             break;
 
