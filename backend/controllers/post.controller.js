@@ -1,6 +1,8 @@
 import Post from '../models/Post.model.js';
 import Account from '../models/Account.model.js';
 import { getPostStats } from '../services/facebook.service.js';
+import { getLinkedInPostStats } from '../services/linkedin.service.js';
+import { getInstagramPostStats } from '../services/instagram.service.js';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -677,6 +679,7 @@ export const refreshPostAnalytics = async (req, res) => {
   try {
     const userId = req.user._id;
     const postId = req.params.id;
+    const { platform } = req.query; // Optional: specify which platform to refresh
 
     // Find the post
     const post = await Post.findOne({
@@ -699,135 +702,207 @@ export const refreshPostAnalytics = async (req, res) => {
       });
     }
 
-    // Find Facebook platform entry
-    const facebookPlatform = post.publishedPlatforms?.find(
-      p => p.platform === 'facebook' && p.status === 'success'
-    );
+    // Get all successfully published platforms
+    const successfulPlatforms = post.publishedPlatforms?.filter(
+      p => p.status === 'success' && p.platformPostId && p.platformPostId.trim() !== ''
+    ) || [];
 
-    // Check if Facebook platform entry exists
-    if (!facebookPlatform) {
+    if (successfulPlatforms.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Analytics not available for this post. This post was not published to Facebook or the publishing record is missing.'
+        message: 'Analytics not available for this post. This post was not published to any platform or the publishing record is missing.'
       });
     }
 
-    // Validate that platformPostId exists and is not empty
-    if (!facebookPlatform.platformPostId || facebookPlatform.platformPostId.trim() === '') {
+    // Filter by requested platform if specified
+    const platformsToRefresh = platform 
+      ? successfulPlatforms.filter(p => p.platform === platform)
+      : successfulPlatforms;
+
+    if (platformsToRefresh.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Analytics not available for this post (Facebook Post ID missing). This may be an older post created before ID tracking was implemented.'
+        message: `Analytics not available for ${platform || 'the specified platform'}. This post was not published to that platform.`
       });
     }
 
-    // Get Facebook account to retrieve access token
-    const account = await Account.findOne({
-      user: userId,
-      platform: 'facebook',
-      isActive: true
-    });
-
-    if (!account) {
-      return res.status(400).json({
-        success: false,
-        message: 'No active Facebook account found'
-      });
-    }
-
-    // Fetch pages to get page access token first
-    const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-      params: {
-        access_token: account.accessToken,
-        fields: 'id,access_token'
-      }
-    });
-
-    if (!pagesResponse.data.data || pagesResponse.data.data.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No Facebook pages found'
-      });
-    }
-
-    // Determine pageId and postId
-    // Facebook post IDs are typically in format: {pageId}_{postId}
-    let pageId;
-    let postIdOnly = facebookPlatform.platformPostId.trim(); // Ensure no whitespace
-
-    // Validate postId format
-    if (!postIdOnly || postIdOnly.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Analytics not available for this post (Invalid Facebook Post ID).'
-      });
-    }
-
-    try {
-      if (facebookPlatform.pageId) {
-        // Use stored pageId if available
-        pageId = facebookPlatform.pageId;
-      } else if (postIdOnly.includes('_')) {
-        // Extract pageId from postId format
-        const parts = postIdOnly.split('_');
-        if (parts.length >= 2 && parts[0] && parts[1]) {
-          pageId = parts[0];
-          postIdOnly = postIdOnly; // Already in correct format
-        } else {
-          return res.status(400).json({
-            success: false,
-            message: 'Analytics not available for this post (Invalid Facebook Post ID format).'
-          });
-        }
-      } else {
-        // If no pageId and postId doesn't have underscore, use first available page
-        // This shouldn't normally happen, but handle gracefully
-        if (pagesResponse.data.data.length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'Analytics not available for this post (No Facebook pages found).'
-          });
-        }
-        pageId = pagesResponse.data.data[0].id;
-        postIdOnly = `${pageId}_${postIdOnly}`;
-      }
-    } catch (error) {
-      console.error('[Refresh Analytics] Error parsing post ID:', error);
-      return res.status(400).json({
-        success: false,
-        message: 'Analytics not available for this post (Error processing Facebook Post ID).'
-      });
-    }
-
-    // Find the page (we already validated pagesResponse.data.data exists above)
-    const selectedPage = pagesResponse.data.data.find(p => p.id === pageId) || pagesResponse.data.data[0];
-    
-    if (!selectedPage || !selectedPage.access_token) {
-      return res.status(400).json({
-        success: false,
-        message: 'Page Access Token not found. Please reconnect your Facebook Page.'
-      });
-    }
-
-    const pageAccessToken = selectedPage.access_token;
-
-    // Fetch analytics from Facebook
-    const analytics = await getPostStats(pageId, postIdOnly, pageAccessToken);
-
-    // Update post analytics
-    post.analytics = {
-      likes: analytics.likes,
-      comments: analytics.comments,
-      reach: analytics.reach,
-      shares: analytics.shares
+    // Initialize analytics object (will aggregate or use first platform's data)
+    let aggregatedAnalytics = {
+      likes: 0,
+      comments: 0,
+      reach: 0,
+      shares: 0
     };
 
+    const errors = [];
+    const successes = [];
+
+    // Process each platform
+    for (const platformEntry of platformsToRefresh) {
+      try {
+        let analytics = null;
+
+        if (platformEntry.platform === 'facebook') {
+          // Get Facebook account
+          const account = await Account.findOne({
+            user: userId,
+            platform: 'facebook',
+            isActive: true
+          });
+
+          if (!account) {
+            errors.push('Facebook: No active Facebook account found');
+            continue;
+          }
+
+          // Fetch pages to get page access token
+          const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+            params: {
+              access_token: account.accessToken,
+              fields: 'id,access_token'
+            }
+          });
+
+          if (!pagesResponse.data.data || pagesResponse.data.data.length === 0) {
+            errors.push('Facebook: No Facebook pages found');
+            continue;
+          }
+
+          // Determine pageId and postId
+          let pageId;
+          let postIdOnly = platformEntry.platformPostId.trim();
+
+          if (platformEntry.pageId) {
+            pageId = platformEntry.pageId;
+          } else if (postIdOnly.includes('_')) {
+            const parts = postIdOnly.split('_');
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              pageId = parts[0];
+            } else {
+              errors.push('Facebook: Invalid post ID format');
+              continue;
+            }
+          } else {
+            pageId = pagesResponse.data.data[0].id;
+            postIdOnly = `${pageId}_${postIdOnly}`;
+          }
+
+          const selectedPage = pagesResponse.data.data.find(p => p.id === pageId) || pagesResponse.data.data[0];
+          
+          if (!selectedPage || !selectedPage.access_token) {
+            errors.push('Facebook: Page Access Token not found');
+            continue;
+          }
+
+          analytics = await getPostStats(pageId, postIdOnly, selectedPage.access_token);
+          successes.push('Facebook');
+
+        } else if (platformEntry.platform === 'linkedin') {
+          // Get LinkedIn account
+          const account = await Account.findOne({
+            user: userId,
+            platform: 'linkedin',
+            isActive: true
+          });
+
+          if (!account) {
+            errors.push('LinkedIn: No active LinkedIn account found');
+            continue;
+          }
+
+          analytics = await getLinkedInPostStats(platformEntry.platformPostId, account.accessToken);
+          successes.push('LinkedIn');
+
+        } else if (platformEntry.platform === 'instagram') {
+          // Get Facebook account (Instagram uses Facebook OAuth)
+          const account = await Account.findOne({
+            user: userId,
+            platform: 'facebook',
+            isActive: true
+          });
+
+          if (!account) {
+            errors.push('Instagram: No active Facebook account found (Instagram uses Facebook OAuth)');
+            continue;
+          }
+
+          // Get Instagram account ID from the post or account
+          // For now, we'll need to find the Instagram account ID
+          // This might need to be stored in publishedPlatforms or retrieved from account
+          const instagramAccountId = platformEntry.instagramAccountId || account.pages?.[0]?.instagramAccount?.id;
+
+          if (!instagramAccountId) {
+            errors.push('Instagram: Instagram account ID not found');
+            continue;
+          }
+
+          // Fetch pages to get page access token (needed for Instagram)
+          const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+            params: {
+              access_token: account.accessToken,
+              fields: 'id,access_token'
+            }
+          });
+
+          if (!pagesResponse.data.data || pagesResponse.data.data.length === 0) {
+            errors.push('Instagram: No Facebook pages found');
+            continue;
+          }
+
+          // Use the first page's access token (or find the one connected to Instagram)
+          const pageAccessToken = pagesResponse.data.data[0].access_token;
+
+          analytics = await getInstagramPostStats(platformEntry.platformPostId, pageAccessToken);
+          successes.push('Instagram');
+        }
+
+        // Aggregate analytics (for multi-platform posts, sum the metrics)
+        if (analytics) {
+          aggregatedAnalytics.likes += analytics.likes || 0;
+          aggregatedAnalytics.comments += analytics.comments || 0;
+          aggregatedAnalytics.reach += analytics.reach || 0;
+          aggregatedAnalytics.shares += analytics.shares || 0;
+        }
+
+      } catch (platformError) {
+        const errorMsg = platformError.isPermissionError 
+          ? `${platformEntry.platform}: ${platformError.message}`
+          : `${platformEntry.platform}: ${platformError.message || 'Failed to fetch analytics'}`;
+        errors.push(errorMsg);
+        console.error(`[Refresh Analytics] Error for ${platformEntry.platform}:`, platformError);
+      }
+    }
+
+    // Update post analytics
+    post.analytics = aggregatedAnalytics;
     await post.save();
 
-    res.json({
-      success: true,
-      message: 'Analytics refreshed successfully',
-      post
-    });
+    // Return response based on results
+    if (successes.length > 0 && errors.length === 0) {
+      return res.json({
+        success: true,
+        message: `Analytics refreshed successfully for ${successes.join(', ')}`,
+        post
+      });
+    } else if (successes.length > 0 && errors.length > 0) {
+      return res.json({
+        success: true,
+        message: `Analytics refreshed for ${successes.join(', ')}. Some errors: ${errors.join('; ')}`,
+        post,
+        warnings: errors
+      });
+    } else {
+      // All platforms failed
+      const firstError = errors[0] || 'Failed to refresh analytics';
+      const isPermissionError = errors.some(e => e.includes('permission') || e.includes('Permission'));
+      
+      return res.status(isPermissionError ? 403 : 500).json({
+        success: false,
+        message: firstError,
+        errors: errors
+      });
+    }
+
   } catch (error) {
     console.error('[Refresh Analytics] Error:', {
       postId: req.params.id,
@@ -839,12 +914,12 @@ export const refreshPostAnalytics = async (req, res) => {
     
     // Handle permission errors specifically
     if (error.isPermissionError) {
-      let message = error.message || 'Missing required Facebook permissions.';
+      let message = error.message || 'Missing required permissions.';
       
       if (error.requiresAppReview) {
-        message += ' The read_insights permission requires Facebook App Review approval. Please check your Facebook App Dashboard > App Review to ensure the permission is approved.';
+        message += ' Some permissions require App Review approval. Please check your app settings.';
       } else {
-        message += ' Please disconnect and reconnect your Facebook account to grant the required permissions.';
+        message += ' Please disconnect and reconnect your account to grant the required permissions.';
       }
       
       return res.status(403).json({

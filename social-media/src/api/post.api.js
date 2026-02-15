@@ -77,8 +77,11 @@ export const postAPI = {
     return response.data;
   },
 
-  refreshAnalytics: async (postId) => {
-    const response = await api.post(`/posts/${postId}/refresh-analytics`);
+  refreshAnalytics: async (postId, platform = null) => {
+    const url = platform 
+      ? `/posts/${postId}/refresh-analytics?platform=${platform}`
+      : `/posts/${postId}/refresh-analytics`
+    const response = await api.post(url);
     return response.data;
   },
 };
