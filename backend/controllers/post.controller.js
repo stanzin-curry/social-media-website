@@ -865,11 +865,19 @@ export const refreshPostAnalytics = async (req, res) => {
         }
 
       } catch (platformError) {
-        const errorMsg = platformError.isPermissionError 
-          ? `${platformEntry.platform}: ${platformError.message}`
-          : `${platformEntry.platform}: ${platformError.message || 'Failed to fetch analytics'}`;
-        errors.push(errorMsg);
-        console.error(`[Refresh Analytics] Error for ${platformEntry.platform}:`, platformError);
+        // Handle LinkedIn API limitations gracefully
+        if (platformError.linkedinApiLimitation) {
+          const errorMsg = `${platformEntry.platform}: ${platformError.message}`;
+          errors.push(errorMsg);
+          console.warn(`[Refresh Analytics] LinkedIn API limitation for ${platformEntry.platform}:`, platformError.message);
+          // Don't treat LinkedIn limitations as critical - continue with other platforms
+        } else {
+          const errorMsg = platformError.isPermissionError 
+            ? `${platformEntry.platform}: ${platformError.message}`
+            : `${platformEntry.platform}: ${platformError.message || 'Failed to fetch analytics'}`;
+          errors.push(errorMsg);
+          console.error(`[Refresh Analytics] Error for ${platformEntry.platform}:`, platformError);
+        }
       }
     }
 
