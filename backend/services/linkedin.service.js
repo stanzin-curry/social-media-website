@@ -315,62 +315,101 @@ export const getLinkedInPostStats = async (postUrn, accessToken) => {
   }
 
   try {
-    // LinkedIn uses Social Actions API to get engagement metrics
-    // Extract share ID from URN (format: urn:li:share:123456)
+    // LinkedIn API for getting post engagement metrics
+    // Note: LinkedIn's API for getting engagement on UGC posts has limitations:
+    // 1. For personal posts: Limited API access, may require different permissions
+    // 2. For company page posts: Requires organizationalEntityShareStatistics API
+    // 3. The socialActions endpoint may not be available for all post types
+    
+    // Extract share ID from URN (format: urn:li:share:123456 or urn:li:ugcPost:123456)
     const shareId = postUrn.split(':').pop();
+    const urnType = postUrn.split(':')[2]; // 'share' or 'ugcPost'
     
-    // Get social actions (likes, comments, shares)
-    const socialActionsResponse = await axios.get(
-      `https://api.linkedin.com/v2/socialActions/${shareId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'X-Restli-Protocol-Version': '2.0.0'
-        },
-        params: {
-          fields: 'likesSummary,commentsSummary,sharesSummary'
-        }
-      }
-    );
-
-    const socialData = socialActionsResponse.data;
-    
-    // Extract metrics
-    const likes = socialData.likesSummary?.totalLikes || 0;
-    const comments = socialData.commentsSummary?.totalComments || 0;
-    const shares = socialData.sharesSummary?.totalShares || 0;
-    
-    // Get impressions/reach - LinkedIn Analytics API
-    // Note: This requires the post to be from a Company Page and may require additional permissions
+    let likes = 0;
+    let comments = 0;
+    let shares = 0;
     let reach = 0;
+    
+    // Try to get engagement metrics using UGC Posts API
+    // This works for posts created via the UGC Posts API
     try {
-      // Try to get analytics for the post
-      // LinkedIn analytics are available through the Organizational Entity Shares Analytics API
-      // This requires the post to be from a company page
-      const analyticsResponse = await axios.get(
-        `https://api.linkedin.com/v2/organizationalEntityShareStatistics`,
+      const ugcResponse = await axios.get(
+        `https://api.linkedin.com/v2/ugcPosts/${postUrn}`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'X-Restli-Protocol-Version': '2.0.0'
           },
           params: {
-            q: 'organizationalEntity',
-            organizationalEntity: postUrn.split(':').slice(0, 3).join(':'), // Extract entity URN
-            shares: postUrn
+            fields: 'id,lifecycleState'
           }
         }
       );
       
-      if (analyticsResponse.data?.elements && analyticsResponse.data.elements.length > 0) {
-        const stats = analyticsResponse.data.elements[0];
-        reach = stats.impressionCount || stats.uniqueImpressions || 0;
+      // If we can access the post, try to get social actions
+      // Note: This may not work for all post types or may require special permissions
+      try {
+        // Try the socialActions endpoint (may not work for all posts)
+        const socialActionsResponse = await axios.get(
+          `https://api.linkedin.com/v2/socialActions/${shareId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'X-Restli-Protocol-Version': '2.0.0'
+            }
+          }
+        );
+
+        const socialData = socialActionsResponse.data;
+        likes = socialData.likesSummary?.totalLikes || 0;
+        comments = socialData.commentsSummary?.totalComments || 0;
+        shares = socialData.sharesSummary?.totalShares || 0;
+      } catch (socialActionsError) {
+        // Social actions endpoint may not be available
+        // This is expected for many LinkedIn posts - the API has limited access
+        console.log(`[LinkedIn] Social actions not available for post ${postUrn}. LinkedIn API has limited access to engagement metrics for UGC posts.`);
+        // Set to 0 - we'll continue without throwing an error
       }
-    } catch (analyticsError) {
-      // Analytics might not be available for personal posts or without proper permissions
-      // This is not a critical error - we'll just use 0 for reach
-      console.log(`[LinkedIn] Analytics not available for post ${postUrn}:`, analyticsError.response?.data?.message || analyticsError.message);
-      reach = 0;
+      
+      // Try to get analytics/reach for company page posts
+      try {
+        // Check if this is a company page post by checking the URN structure
+        if (postUrn.includes('organization')) {
+          const orgUrn = postUrn.split(':').slice(0, 3).join(':'); // Extract org URN
+          const analyticsResponse = await axios.get(
+            `https://api.linkedin.com/v2/organizationalEntityShareStatistics`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'X-Restli-Protocol-Version': '2.0.0'
+              },
+              params: {
+                q: 'organizationalEntity',
+                organizationalEntity: orgUrn,
+                shares: postUrn
+              }
+            }
+          );
+          
+          if (analyticsResponse.data?.elements && analyticsResponse.data.elements.length > 0) {
+            const stats = analyticsResponse.data.elements[0];
+            reach = stats.impressionCount || stats.uniqueImpressions || 0;
+          }
+        }
+      } catch (analyticsError) {
+        // Analytics might not be available for personal posts or without proper permissions
+        console.log(`[LinkedIn] Analytics not available for post ${postUrn}:`, analyticsError.response?.data?.message || analyticsError.message);
+        reach = 0;
+      }
+      
+    } catch (ugcError) {
+      // If we can't access the UGC post, LinkedIn API has very limited access to engagement metrics
+      // This is a known limitation - LinkedIn doesn't provide public APIs for all engagement data
+      console.log(`[LinkedIn] Limited API access for post ${postUrn}. LinkedIn's API has restrictions on accessing engagement metrics for UGC posts.`);
+      
+      // For now, we'll return zeros with a note that LinkedIn API has limitations
+      // In the future, you might need to use LinkedIn's Analytics API which requires
+      // special partnerships or use web scraping (not recommended)
     }
     
     return {
@@ -382,21 +421,27 @@ export const getLinkedInPostStats = async (postUrn, accessToken) => {
   } catch (error) {
     const errorMessage = error.response?.data?.message || error.message;
     const errorCode = error.response?.status;
+    const errorData = error.response?.data;
     
     console.error(`[LinkedIn] Analytics error for post ${postUrn}:`, {
       message: errorMessage,
       code: errorCode,
-      fullError: error.response?.data
+      fullError: errorData
     });
     
     // Check if it's a permissions error
     if (errorCode === 403 || errorCode === 401) {
-      const permissionError = new Error('Missing required LinkedIn permissions. Please reconnect your LinkedIn account to grant the necessary permissions.');
+      // LinkedIn's API has very limited access to engagement metrics
+      // The socialActions endpoint may not be available for all post types
+      // or may require special partnerships with LinkedIn
+      const permissionError = new Error('LinkedIn API has limited access to engagement metrics. The socialActions endpoint requires special permissions that may not be available for all LinkedIn apps. For testing, use ENABLE_MOCK_ANALYTICS=true in your .env file.');
       permissionError.isPermissionError = true;
+      permissionError.linkedinApiLimitation = true;
       throw permissionError;
     }
     
-    throw new Error(`LinkedIn analytics error: ${errorMessage}`);
+    // For other errors, still throw but with context
+    throw new Error(`LinkedIn analytics error: ${errorMessage}. Note: LinkedIn's API has restrictions on accessing engagement metrics for UGC posts.`);
   }
 };
 
