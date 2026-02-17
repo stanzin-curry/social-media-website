@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function MiniCalendar(){
-  const { scheduledPosts } = useApp()
+  const { scheduledPosts, publishedPosts } = useApp()
   const today = new Date()
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -10,6 +10,9 @@ export default function MiniCalendar(){
   const [hoveredDay, setHoveredDay] = useState(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const days = []
+  
+  // Combine scheduled and published posts
+  const allPosts = [...scheduledPosts, ...publishedPosts]
 
   // Helper function to get platform icon
   const getPlatformIcon = (platform) => {
@@ -27,7 +30,7 @@ export default function MiniCalendar(){
 
   // Helper function to get posts for a specific day
   const getPostsForDay = (day) => {
-    return scheduledPosts.filter(p => {
+    return allPosts.filter(p => {
       if (!p.scheduledDate) return false
       const postDate = new Date(p.scheduledDate)
       return postDate.getDate() === day && 
@@ -120,7 +123,7 @@ export default function MiniCalendar(){
             <div className="mb-1.5">
               <span className="text-orange-400 font-semibold">{postCount}</span>
               <span className="text-gray-300 ml-1">
-                {postCount === 1 ? 'post' : 'posts'} scheduled
+                {postCount === 1 ? 'post' : 'posts'} total
               </span>
             </div>
             {platforms.length > 0 && (
