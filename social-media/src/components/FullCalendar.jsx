@@ -2,12 +2,15 @@ import React from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function FullCalendar({ onDayClick, onPostClick }) {
-  const { currentMonth, currentYear, scheduledPosts } = useApp()
+  const { currentMonth, currentYear, scheduledPosts, publishedPosts } = useApp()
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const firstDay = new Date(currentYear, currentMonth, 1)
   const lastDay = new Date(currentYear, currentMonth + 1, 0)
   const prevLastDay = new Date(currentYear, currentMonth, 0)
   const cells = []
+  
+  // Combine scheduled and published posts
+  const allPosts = [...scheduledPosts, ...publishedPosts]
 
   // Helper function to get platform icon
   const getPlatformIcon = (platform) => {
@@ -27,7 +30,7 @@ export default function FullCalendar({ onDayClick, onPostClick }) {
     cells.push({ num: prevLastDay.getDate() - i, dim:true })
   }
   for (let day=1; day<= lastDay.getDate(); day++) {
-    const dayPosts = scheduledPosts.filter(p => {
+    const dayPosts = allPosts.filter(p => {
       if (!p.scheduledDate) return false
       const pd = new Date(p.scheduledDate)
       return pd.getDate() === day && pd.getMonth() === currentMonth && pd.getFullYear() === currentYear
@@ -80,11 +83,22 @@ export default function FullCalendar({ onDayClick, onPostClick }) {
                   const platforms = p.platforms || []
                   const caption = p.caption || ''
                   const captionPreview = caption.length > 15 ? caption.substring(0, 15) + '...' : caption
+                  const postStatus = p.status || 'scheduled'
+                  const isPublished = postStatus === 'published'
+                  const isFailed = postStatus === 'failed'
+                  
+                  // Different colors based on status
+                  let bgColor = 'bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600' // Scheduled
+                  if (isPublished) {
+                    bgColor = 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700' // Published
+                  } else if (isFailed) {
+                    bgColor = 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' // Failed
+                  }
                   
                   return (
                     <div 
                       key={postId} 
-                      className="post-item text-[9px] sm:text-xs bg-gradient-to-r from-orange-400 to-pink-500 text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded cursor-pointer hover:from-orange-500 hover:to-pink-600 transition-colors flex-shrink-0"
+                      className={`post-item text-[9px] sm:text-xs ${bgColor} text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded cursor-pointer transition-colors flex-shrink-0`}
                       onClick={(e) => handlePostClick(p, e)}
                     >
                       <div className="flex items-center gap-0.5 sm:gap-1 mb-0 sm:mb-0.5">

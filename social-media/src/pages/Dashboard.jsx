@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FaFacebook, FaLinkedin } from 'react-icons/fa'
+import { FaFacebook, FaLinkedin, FaInstagram } from 'react-icons/fa'
 import { useApp } from '../context/AppContext'
 import { postAPI } from '../api/post.api.js'
 import MiniCalendar from '../components/MiniCalendar'
@@ -72,11 +72,27 @@ export default function Dashboard(){
   const getPlatformIcon = (platform) => {
     switch (platform?.toLowerCase()) {
       case 'facebook':
-        return <FaFacebook className="text-blue-600" />
+        return <FaFacebook />
       case 'linkedin':
-        return <FaLinkedin className="text-blue-700" />
+        return <FaLinkedin />
+      case 'instagram':
+        return <FaInstagram />
       default:
         return null
+    }
+  }
+
+  // Get platform icon container styling
+  const getPlatformIconContainer = (platform) => {
+    switch (platform?.toLowerCase()) {
+      case 'instagram':
+        return 'bg-gradient-to-br from-orange-400 to-pink-500'
+      case 'facebook':
+        return 'bg-blue-600'
+      case 'linkedin':
+        return 'bg-blue-700'
+      default:
+        return 'bg-white'
     }
   }
 
@@ -144,11 +160,20 @@ export default function Dashboard(){
                     {/* Platform Icons */}
                     <div className="flex flex-col gap-1 sm:gap-2 flex-shrink-0">
                       {platforms.length > 0 ? (
-                        platforms.slice(0, 2).map((platform, idx) => (
-                          <div key={idx} className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                            {getPlatformIcon(platform)}
-                          </div>
-                        ))
+                        platforms.slice(0, 2).map((platform, idx) => {
+                          const containerClass = getPlatformIconContainer(platform)
+                          const platformLower = platform?.toLowerCase()
+                          const iconColor = (platformLower === 'instagram' || platformLower === 'facebook' || platformLower === 'linkedin') ? 'text-white' : ''
+                          return (
+                            <div key={idx} className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg ${containerClass} flex items-center justify-center shadow-sm`}>
+                              {getPlatformIcon(platform) ? (
+                                React.cloneElement(getPlatformIcon(platform), { 
+                                  className: `${iconColor} text-sm sm:text-base` 
+                                })
+                              ) : null}
+                            </div>
+                          )
+                        })
                       ) : (
                         <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gray-200 flex items-center justify-center">
                           <i className="fas fa-globe text-gray-400 text-xs sm:text-sm" />
