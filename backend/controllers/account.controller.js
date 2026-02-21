@@ -1,4 +1,5 @@
 import Account from '../models/Account.model.js';
+import Post from '../models/Post.model.js';
 import { connectFacebookAccount, connectInstagramAccount, connectLinkedInAccount } from '../services/oauth.service.js';
 
 export const getAccounts = async (req, res) => {
@@ -6,9 +7,57 @@ export const getAccounts = async (req, res) => {
     const userId = req.user._id;
     const accounts = await Account.find({ user: userId, isActive: true });
 
+    // Get post counts for each platform
+    const postCounts = await Post.aggregate([
+      { $match: { user: userId, status: 'published' } },
+      { $unwind: '$platforms' },
+      { $group: { _id: '$platforms', count: { $sum: 1 } } }
+    ]);
+
+    // Convert post counts to object for easy lookup
+    const postCountMap = {};
+    postCounts.forEach(item => {
+      postCountMap[item._id] = item.count;
+    });
+
+    // Enhance accounts with page counts and post counts
+    const enhancedAccounts = accounts.map(account => {
+      const accountObj = account.toObject();
+      
+      // Count pages/accounts
+      let pageCount = 0;
+      if (account.platform === 'facebook' && account.pages) {
+        pageCount = account.pages.length;
+      } else if (account.platform === 'linkedin-company' && account.pages) {
+        pageCount = account.pages.length;
+      } else if (account.platform === 'linkedin') {
+        pageCount = 1; // Personal profile counts as 1
+      }
+
+      accountObj.pageCount = pageCount;
+      accountObj.postCount = postCountMap[account.platform] || 0;
+
+      return accountObj;
+    });
+
+    // Handle Instagram separately - count Instagram accounts from Facebook pages
+    const facebookAccount = accounts.find(acc => acc.platform === 'facebook' && acc.isActive);
+    const instagramAccount = accounts.find(acc => acc.platform === 'instagram' && acc.isActive);
+    
+    if (instagramAccount) {
+      const instagramIndex = enhancedAccounts.findIndex(acc => acc.platform === 'instagram');
+      if (instagramIndex !== -1) {
+        if (facebookAccount && facebookAccount.pages) {
+          enhancedAccounts[instagramIndex].pageCount = facebookAccount.pages.filter(page => page.instagramAccount).length;
+        } else {
+          enhancedAccounts[instagramIndex].pageCount = 1; // At least 1 if connected
+        }
+      }
+    }
+
     res.json({
       success: true,
-      accounts
+      accounts: enhancedAccounts
     });
   } catch (error) {
     res.status(500).json({
@@ -189,14 +238,71 @@ export const refreshAccountToken = async (req, res) => {
       });
     }
 
-    // Token refresh logic would go here based on platform
-    // This is a placeholder - actual implementation depends on platform APIs
+    // Fetch real follower counts from platform APIs
+    const axios = (await import('axios')).default;
+    let followerCount = 0;
+
+    try {
+      if (account.platform === 'facebook' && account.pages && account.pages.length > 0) {
+        // For Facebook, get followers from the first page
+        const firstPage = account.pages[0];
+        try {
+          const pageInfo = await axios.get(`https://graph.facebook.com/v19.0/${firstPage.id}`, {
+            params: {
+              fields: 'fan_count',
+              access_token: firstPage.accessToken
+            }
+          });
+          followerCount = pageInfo.data.fan_count || 0;
+        } catch (error) {
+          console.error('Error fetching Facebook followers:', error.message);
+        }
+      } else if (account.platform === 'instagram') {
+        // For Instagram, get followers from Instagram Business Account
+        // Instagram accounts are linked to Facebook pages
+        const facebookAccount = await Account.findOne({
+          user: userId,
+          platform: 'facebook',
+          isActive: true
+        });
+        
+        if (facebookAccount && facebookAccount.pages) {
+          // Find page with Instagram account
+          const pageWithInstagram = facebookAccount.pages.find(page => 
+            page.instagramAccount && page.instagramAccount.id === account.platformUserId
+          );
+          
+          if (pageWithInstagram && pageWithInstagram.accessToken) {
+            try {
+              const igInfo = await axios.get(`https://graph.facebook.com/v19.0/${account.platformUserId}`, {
+                params: {
+                  fields: 'followers_count',
+                  access_token: pageWithInstagram.accessToken
+                }
+              });
+              followerCount = igInfo.data.followers_count || 0;
+            } catch (error) {
+              console.error('Error fetching Instagram followers:', error.message);
+            }
+          }
+        }
+      } else if (account.platform === 'linkedin' || account.platform === 'linkedin-company') {
+        // LinkedIn doesn't provide follower count via API easily
+        // We'll keep it at 0 or use a placeholder
+        followerCount = account.followers || 0;
+      }
+    } catch (error) {
+      console.error('Error fetching followers:', error.message);
+    }
+
+    // Update account with fetched data
+    account.followers = followerCount;
     account.lastSync = new Date();
     await account.save();
 
     res.json({
       success: true,
-      message: 'Token refreshed successfully',
+      message: 'Account data refreshed successfully',
       account
     });
   } catch (error) {

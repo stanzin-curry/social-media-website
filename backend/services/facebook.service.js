@@ -607,3 +607,44 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
   }
 };
 
+/**
+ * Edit an existing Facebook post
+ * Note: Facebook only allows editing text/caption for certain post types (text posts and some photo posts)
+ * Media/images cannot be edited - the post must be deleted and reposted
+ * @param {string} postId - Facebook Post ID (format: {pageId}_{postId} or just postId)
+ * @param {string} pageAccessToken - Facebook Page Access Token
+ * @param {string} newCaption - New caption/text for the post
+ * @returns {Promise<Object>} Updated post data
+ */
+export const editFacebookPost = async (postId, pageAccessToken, newCaption) => {
+  try {
+    // Facebook Graph API allows editing posts via POST to the post ID
+    // Note: This only works for certain post types (text posts, some photo posts)
+    // It does NOT work for all post types (e.g., link posts, video posts may not support editing)
+    const response = await axios.post(
+      `https://graph.facebook.com/v19.0/${postId}`,
+      {
+        message: newCaption,
+        access_token: pageAccessToken
+      }
+    );
+
+    return {
+      success: true,
+      postId: postId,
+      platform: 'facebook',
+      message: 'Post updated successfully'
+    };
+  } catch (error) {
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    const errorCode = error.response?.data?.error?.code;
+    
+    // Facebook may return specific errors for posts that can't be edited
+    if (errorCode === 100 || errorMessage.includes('cannot be edited') || errorMessage.includes('not editable')) {
+      throw new Error(`This Facebook post type does not support editing. Only text posts and some photo posts can be edited. Media/images cannot be changed.`);
+    }
+    
+    throw new Error(`Facebook edit error: ${errorMessage}`);
+  }
+};
+

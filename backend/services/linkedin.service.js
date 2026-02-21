@@ -445,3 +445,20 @@ export const getLinkedInPostStats = async (postUrn, accessToken) => {
   }
 };
 
+/**
+ * Edit an existing LinkedIn post
+ * NOTE: LinkedIn does NOT support editing published posts via their API
+ * This function exists for consistency but will always throw an error
+ * To "edit" a LinkedIn post, you must delete it and create a new one
+ * @param {string} postUrn - LinkedIn Post URN (e.g., "urn:li:share:123456" or "urn:li:ugcPost:123456")
+ * @param {string} accessToken - LinkedIn access token
+ * @param {string} newText - New text content (not used, LinkedIn doesn't support editing)
+ * @throws {Error} Always throws an error since LinkedIn doesn't support editing
+ */
+export const editLinkedInPost = async (postUrn, accessToken, newText) => {
+  // LinkedIn UGC Posts API does not provide an endpoint to edit published posts
+  // Once a post is published, it cannot be modified
+  // The only way to "edit" is to delete the post and create a new one (which loses engagement)
+  throw new Error('LinkedIn does not support editing published posts. Once a post is published, it cannot be modified. To change the content, you must delete the post and create a new one (note: this will lose all engagement metrics).');
+};
+

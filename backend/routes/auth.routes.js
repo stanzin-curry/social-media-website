@@ -15,22 +15,35 @@ import {
   testInstagramPost
 } from '../controllers/auth.controller.js';
 import { authenticate } from '../utils/middleware.js';
+import User from '../models/User.model.js';
 
 const router = express.Router();
 
 // Authentication routes
 router.post('/register', register);
 router.post('/login', login);
-router.get('/me', authenticate, (req, res) => {
-  res.json({
-    success: true,
-    user: {
-      id: req.user._id,
-      username: req.user.username,
-      email: req.user.email,
-      role: req.user.role
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    // Fetch full user data excluding password
+    const user = await User.findById(req.user._id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
-  });
+
+    res.json({
+      success: true,
+      user: user.toObject()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch user data'
+    });
+  }
 });
 
 // OAuth routes - LinkedIn Personal Profile

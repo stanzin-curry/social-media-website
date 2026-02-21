@@ -375,3 +375,20 @@ export const getInstagramPostStats = async (mediaId, accessToken) => {
   }
 };
 
+/**
+ * Edit an existing Instagram post
+ * NOTE: Instagram does NOT support editing published posts via their API
+ * This function exists for consistency but will always throw an error
+ * To "edit" an Instagram post, you must delete it and create a new one
+ * @param {string} postId - Instagram Media ID
+ * @param {string} accessToken - Instagram access token
+ * @param {string} newCaption - New caption (not used, Instagram doesn't support editing)
+ * @throws {Error} Always throws an error since Instagram doesn't support editing
+ */
+export const editInstagramPost = async (postId, accessToken, newCaption) => {
+  // Instagram Graph API does not provide an endpoint to edit published posts
+  // Once a post is published, it cannot be modified
+  // The only way to "edit" is to delete the post and create a new one (which loses engagement)
+  throw new Error('Instagram does not support editing published posts. Once a post is published, it cannot be modified. To change the content, you must delete the post and create a new one (note: this will lose all engagement metrics).');
+};
+

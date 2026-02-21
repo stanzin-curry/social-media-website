@@ -1,6 +1,13 @@
 import User from '../models/User.model.js';
 import Account from '../models/Account.model.js';
 import Post from '../models/Post.model.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export const getProfile = async (req, res) => {
   try {
@@ -85,6 +92,22 @@ export const updateProfile = async (req, res) => {
       if (typeof notificationPreferences.postFailed === 'boolean') {
         user.notificationPreferences.postFailed = notificationPreferences.postFailed;
       }
+    }
+
+    // Handle profile photo upload if provided
+    if (req.file) {
+      // Delete old profile photo if it exists
+      if (user.profilePhoto) {
+        const oldPhotoPath = path.join(__dirname, '../uploads', path.basename(user.profilePhoto));
+        if (fs.existsSync(oldPhotoPath)) {
+          try {
+            fs.unlinkSync(oldPhotoPath);
+          } catch (error) {
+            console.error('Error deleting old profile photo:', error);
+          }
+        }
+      }
+      user.profilePhoto = `/uploads/${req.file.filename}`;
     }
 
     await user.save();
@@ -195,6 +218,57 @@ export const deleteAccount = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to delete account'
+    });
+  }
+};
+
+export const uploadProfilePhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Delete old profile photo if it exists
+    if (user.profilePhoto) {
+      const oldPhotoPath = path.join(__dirname, '../uploads', path.basename(user.profilePhoto));
+      if (fs.existsSync(oldPhotoPath)) {
+        try {
+          fs.unlinkSync(oldPhotoPath);
+        } catch (error) {
+          console.error('Error deleting old profile photo:', error);
+        }
+      }
+    }
+
+    // Update user's profile photo
+    user.profilePhoto = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    // Return user without password
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.json({
+      success: true,
+      message: 'Profile photo uploaded successfully',
+      user: userResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to upload profile photo'
     });
   }
 };
