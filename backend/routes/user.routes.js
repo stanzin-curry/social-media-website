@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../utils/middleware.js';
-import { getProfile, updateProfile, changePassword, deleteAccount } from '../controllers/user.controller.js';
+import { getProfile, updateProfile, changePassword, deleteAccount, uploadProfilePhoto } from '../controllers/user.controller.js';
+import upload from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
@@ -8,7 +9,8 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/profile', getProfile);
-router.put('/profile', updateProfile);
+router.put('/profile', upload.single('profilePhoto'), updateProfile);
+router.post('/profile/photo', upload.single('profilePhoto'), uploadProfilePhoto);
 router.put('/password', changePassword);
 router.delete('/account', deleteAccount);
 

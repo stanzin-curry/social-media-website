@@ -1,8 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { accountAPI } from '../api/account.api'
 
 export default function Accounts(){
-  const { connectedAccounts, toggleConnection, accountData } = useApp()
+  const { connectedAccounts, toggleConnection, accountData, loadAccounts, addNotification } = useApp()
+  const [refreshing, setRefreshing] = useState({})
 
   const platforms = [
     { key: 'instagram', color: 'from-orange-400 to-pink-500', icon: 'fa-instagram' },
@@ -36,23 +38,57 @@ export default function Accounts(){
             {connectedAccounts[p.key] && (
               <div className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
                 <div className="flex justify-between text-[10px] sm:text-xs">
-                  <span className="text-gray-600">Followers</span>
-                  <span className="font-semibold text-gray-800">{accountData[p.key].followers}</span>
+                  <span className="text-gray-600">Pages Connected</span>
+                  <span className="font-semibold text-gray-800">{accountData[p.key]?.pageCount || 0}</span>
                 </div>
                 <div className="flex justify-between text-[10px] sm:text-xs">
-                  <span className="text-gray-600">Posts</span>
-                  <span className="font-semibold text-gray-800">{accountData[p.key].posts}</span>
+                  <span className="text-gray-600">Followers</span>
+                  <span className="font-semibold text-gray-800">{accountData[p.key]?.followers || 0}</span>
+                </div>
+                <div className="flex justify-between text-[10px] sm:text-xs">
+                  <span className="text-gray-600">Posts Published</span>
+                  <span className="font-semibold text-gray-800">{accountData[p.key]?.posts || 0}</span>
                 </div>
                 <div className="flex justify-between text-[10px] sm:text-xs">
                   <span className="text-gray-600">Last Sync</span>
-                  <span className="font-semibold text-gray-800 truncate ml-2">{accountData[p.key].lastSync}</span>
+                  <span className="font-semibold text-gray-800 truncate ml-2">{accountData[p.key]?.lastSync}</span>
                 </div>
               </div>
             )}
 
-            <button onClick={()=>toggleConnection(p.key)} className={`w-full px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] transition-colors ${connectedAccounts[p.key] ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-500 text-white hover:bg-green-600'}`}>
-              <i className={`fas ${connectedAccounts[p.key] ? 'fa-unlink' : 'fa-link'} mr-2`} />{connectedAccounts[p.key] ? 'Disconnect' : 'Connect'}
-            </button>
+            <div className="flex gap-2">
+              {connectedAccounts[p.key] && accountData[p.key]?.accountId && (
+                <button 
+                  onClick={async () => {
+                    setRefreshing(prev => ({ ...prev, [p.key]: true }))
+                    try {
+                      const response = await accountAPI.refreshAccountToken(accountData[p.key].accountId)
+                      if (response.success) {
+                        addNotification('Account data refreshed successfully', 'success')
+                        await loadAccounts()
+                      } else {
+                        addNotification(response.message || 'Failed to refresh account data', 'error')
+                      }
+                    } catch (error) {
+                      addNotification(error.response?.data?.message || 'Failed to refresh account data', 'error')
+                    } finally {
+                      setRefreshing(prev => ({ ...prev, [p.key]: false }))
+                    }
+                  }}
+                  disabled={refreshing[p.key]}
+                  className="px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center"
+                  title="Refresh follower count"
+                >
+                  <i className={`fas ${refreshing[p.key] ? 'fa-spinner fa-spin' : 'fa-sync-alt'} text-xs sm:text-sm`} />
+                </button>
+              )}
+              <button 
+                onClick={()=>toggleConnection(p.key)} 
+                className={`flex-1 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] transition-colors ${connectedAccounts[p.key] ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-500 text-white hover:bg-green-600'}`}
+              >
+                <i className={`fas ${connectedAccounts[p.key] ? 'fa-unlink' : 'fa-link'} mr-2`} />{connectedAccounts[p.key] ? 'Disconnect' : 'Connect'}
+              </button>
+            </div>
           </div>
         ))}
 
@@ -76,24 +112,61 @@ export default function Accounts(){
 
               {isConnected && (
                 <div className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
+                  {p.accountType === 'company' && (
+                    <div className="flex justify-between text-[10px] sm:text-xs">
+                      <span className="text-gray-600">Pages Connected</span>
+                      <span className="font-semibold text-gray-800">{accountData[p.key]?.pageCount || 0}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-[10px] sm:text-xs">
                     <span className="text-gray-600">Followers</span>
-                    <span className="font-semibold text-gray-800">{accountData[p.key].followers}</span>
+                    <span className="font-semibold text-gray-800">{accountData[p.key]?.followers || 0}</span>
                   </div>
                   <div className="flex justify-between text-[10px] sm:text-xs">
-                    <span className="text-gray-600">Posts</span>
-                    <span className="font-semibold text-gray-800">{accountData[p.key].posts}</span>
+                    <span className="text-gray-600">Posts Published</span>
+                    <span className="font-semibold text-gray-800">{accountData[p.key]?.posts || 0}</span>
                   </div>
                   <div className="flex justify-between text-[10px] sm:text-xs">
                     <span className="text-gray-600">Last Sync</span>
-                    <span className="font-semibold text-gray-800 truncate ml-2">{accountData[p.key].lastSync}</span>
+                    <span className="font-semibold text-gray-800 truncate ml-2">{accountData[p.key]?.lastSync}</span>
                   </div>
                 </div>
               )}
 
-              <button onClick={()=>toggleConnection(p.key, p.accountType)} className={`w-full px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] transition-colors ${isConnected ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-500 text-white hover:bg-green-600'}`}>
-                <i className={`fas ${isConnected ? 'fa-unlink' : 'fa-link'} mr-2`} />{isConnected ? 'Disconnect' : 'Connect'}
-              </button>
+              <div className="flex gap-2">
+                {isConnected && accountData[p.key]?.accountId && (
+                  <button 
+                    onClick={async () => {
+                      const refreshKey = `${p.key}-${p.accountType}`
+                      setRefreshing(prev => ({ ...prev, [refreshKey]: true }))
+                      try {
+                        const response = await accountAPI.refreshAccountToken(accountData[p.key].accountId)
+                        if (response.success) {
+                          addNotification('Account data refreshed successfully', 'success')
+                          await loadAccounts()
+                        } else {
+                          addNotification(response.message || 'Failed to refresh account data', 'error')
+                        }
+                      } catch (error) {
+                        addNotification(error.response?.data?.message || 'Failed to refresh account data', 'error')
+                      } finally {
+                        setRefreshing(prev => ({ ...prev, [refreshKey]: false }))
+                      }
+                    }}
+                    disabled={refreshing[`${p.key}-${p.accountType}`]}
+                    className="px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center"
+                    title="Refresh follower count"
+                  >
+                    <i className={`fas ${refreshing[`${p.key}-${p.accountType}`] ? 'fa-spinner fa-spin' : 'fa-sync-alt'} text-xs sm:text-sm`} />
+                  </button>
+                )}
+                <button 
+                  onClick={()=>toggleConnection(p.key, p.accountType)} 
+                  className={`flex-1 px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium min-h-[44px] transition-colors ${isConnected ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-500 text-white hover:bg-green-600'}`}
+                >
+                  <i className={`fas ${isConnected ? 'fa-unlink' : 'fa-link'} mr-2`} />{isConnected ? 'Disconnect' : 'Connect'}
+                </button>
+              </div>
             </div>
           )
         })}

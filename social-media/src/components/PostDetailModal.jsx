@@ -57,9 +57,20 @@ export default function PostDetailModal({ open, onClose, post }) {
   }
 
   const handleUpdate = async () => {
-    if (!caption || !date || !time || selectedPlatforms.length === 0) {
-      addNotification('Please fill in all fields and select at least one platform', 'error')
-      return
+    const isPublished = post.status === 'published'
+    
+    // For published posts, only caption is required
+    // For scheduled posts, all fields are required
+    if (isPublished) {
+      if (!caption) {
+        addNotification('Please provide a caption', 'error')
+        return
+      }
+    } else {
+      if (!caption || !date || !time || selectedPlatforms.length === 0) {
+        addNotification('Please fill in all fields and select at least one platform', 'error')
+        return
+      }
     }
 
     try {
@@ -73,7 +84,26 @@ export default function PostDetailModal({ open, onClose, post }) {
       })
 
       if (response.success) {
-        addNotification('Post updated successfully', 'success')
+        // Show detailed message if edit results are available
+        let notificationMessage = response.message || 'Post updated successfully'
+        
+        // If there are edit results, show platform-specific messages
+        if (response.editResults) {
+          const { success, failed } = response.editResults
+          if (success.length > 0 && failed.length === 0) {
+            notificationMessage = `Post updated successfully on all platforms: ${success.map(s => s.platform).join(', ')}`
+          } else if (success.length > 0 && failed.length > 0) {
+            const failedMessages = failed.map(f => `${f.platform}: ${f.error}`).join('; ')
+            notificationMessage = `Updated on ${success.map(s => s.platform).join(', ')}. ${failedMessages}`
+            addNotification(notificationMessage, 'warning')
+          } else {
+            notificationMessage = response.message || 'Failed to update post on platforms'
+            addNotification(notificationMessage, 'error')
+          }
+        } else {
+          addNotification(notificationMessage, 'success')
+        }
+        
         await loadPosts()
         setIsEditing(false)
         onClose?.()
@@ -146,7 +176,7 @@ export default function PostDetailModal({ open, onClose, post }) {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
         <div className="p-3 sm:p-4 lg:p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-800">
-            {isEditing ? 'Edit Scheduled Post' : 'Post Details'}
+            {isEditing ? (post.status === 'published' ? 'Edit Published Post' : 'Edit Scheduled Post') : 'Post Details'}
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <i className="fas fa-times text-base sm:text-lg lg:text-xl"/>
@@ -156,6 +186,23 @@ export default function PostDetailModal({ open, onClose, post }) {
         <div className="p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4">
           {isEditing ? (
             <>
+              {post.status === 'published' && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-yellow-800 font-medium mb-2">
+                    <i className="fas fa-exclamation-triangle mr-2" />
+                    Editing Published Post
+                  </p>
+                  <ul className="text-xs sm:text-sm text-yellow-700 space-y-1 list-disc list-inside">
+                    <li><strong>Facebook:</strong> Caption can be edited (media cannot be changed)</li>
+                    <li><strong>Instagram:</strong> Does not support editing published posts</li>
+                    <li><strong>LinkedIn:</strong> Does not support editing published posts</li>
+                  </ul>
+                  <p className="text-xs sm:text-sm text-yellow-700 mt-2">
+                    Note: Only the caption will be updated. Media and other settings cannot be changed for published posts.
+                  </p>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Post Caption</label>
                 <textarea 
@@ -166,61 +213,65 @@ export default function PostDetailModal({ open, onClose, post }) {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Platforms</label>
-                <div className="flex flex-wrap gap-2">
-                  {Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).length === 0 ? (
-                    <div className="text-xs sm:text-sm text-gray-500 py-3 sm:py-4">Connect accounts first to select platforms</div>
-                  ) : Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).map(p => (
-                    <button 
-                      key={p} 
-                      onClick={() => togglePlatform(p)} 
-                      className={`px-3 py-2 border rounded text-xs sm:text-sm min-h-[44px] transition-colors ${selectedPlatforms.includes(p) ? 'bg-green-50 border-green-500 text-green-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      <i className={`fab fa-${p} mr-2`} />{p.charAt(0).toUpperCase() + p.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {post.status !== 'published' && (
+                <>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Platforms</label>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).length === 0 ? (
+                        <div className="text-xs sm:text-sm text-gray-500 py-3 sm:py-4">Connect accounts first to select platforms</div>
+                      ) : Object.keys(connectedAccounts).filter(k => connectedAccounts[k]).map(p => (
+                        <button 
+                          key={p} 
+                          onClick={() => togglePlatform(p)} 
+                          className={`px-3 py-2 border rounded text-xs sm:text-sm min-h-[44px] transition-colors ${selectedPlatforms.includes(p) ? 'bg-green-50 border-green-500 text-green-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          <i className={`fab fa-${p} mr-2`} />{p.charAt(0).toUpperCase() + p.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Page Selection for Facebook */}
-              {selectedPlatforms.includes('facebook') && (
-                <PageSelector
-                  platform="facebook"
-                  value={selectedPages.facebook}
-                  onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
-                />
+                  {/* Page Selection for Facebook */}
+                  {selectedPlatforms.includes('facebook') && (
+                    <PageSelector
+                      platform="facebook"
+                      value={selectedPages.facebook}
+                      onChange={(pageId) => setSelectedPages({ ...selectedPages, facebook: pageId })}
+                    />
+                  )}
+
+                  {/* Page Selection for Instagram */}
+                  {selectedPlatforms.includes('instagram') && (
+                    <PageSelector
+                      platform="instagram"
+                      value={selectedPages.instagram}
+                      onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
+                    />
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                      <input 
+                        type="date" 
+                        value={date} 
+                        onChange={e => setDate(e.target.value)} 
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
+                      <input 
+                        type="time" 
+                        value={time} 
+                        onChange={e => setTime(e.target.value)} 
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                      />
+                    </div>
+                  </div>
+                </>
               )}
-
-              {/* Page Selection for Instagram */}
-              {selectedPlatforms.includes('instagram') && (
-                <PageSelector
-                  platform="instagram"
-                  value={selectedPages.instagram}
-                  onChange={(accountId) => setSelectedPages({ ...selectedPages, instagram: accountId })}
-                />
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                  <input 
-                    type="date" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)} 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
-                  <input 
-                    type="time" 
-                    value={time} 
-                    onChange={e => setTime(e.target.value)} 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
-                  />
-                </div>
-              </div>
             </>
           ) : (
             <>

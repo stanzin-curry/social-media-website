@@ -20,7 +20,12 @@ export default function NotificationPanel(){
         ) : notifications.map(n => (
           <div key={n.id} className="p-3 sm:p-4 hover:bg-gray-50">
             <div className="flex items-start gap-2 sm:gap-3">
-              <i className={`fas ${n.type === 'success' ? 'fa-check-circle text-green-500' : 'fa-info-circle text-blue-500'} text-base sm:text-lg mt-0.5 flex-shrink-0`}/>
+              <i className={`fas ${
+                n.type === 'success' ? 'fa-check-circle text-green-500' : 
+                n.type === 'error' ? 'fa-exclamation-circle text-red-500' :
+                n.type === 'warning' ? 'fa-exclamation-triangle text-yellow-500' :
+                'fa-info-circle text-blue-500'
+              } text-base sm:text-lg mt-0.5 flex-shrink-0`}/>
               <div className="flex-1 min-w-0">
                 <p className="text-xs sm:text-sm text-gray-800 break-words">{n.message}</p>
                 <p className="text-[10px] sm:text-xs text-gray-500 mt-1">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>

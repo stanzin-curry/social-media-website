@@ -33,16 +33,15 @@ export const register = async (req, res) => {
     const user = await User.create({ username, email, password });
     const token = generateToken(user._id);
 
+    // Return full user object excluding password
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
+      user: userResponse
     });
   } catch (error) {
     res.status(500).json({
@@ -81,16 +80,15 @@ export const login = async (req, res) => {
 
     const token = generateToken(user._id);
 
+    // Return full user object excluding password
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
     res.json({
       success: true,
       message: 'Login successful',
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
+      user: userResponse
     });
   } catch (error) {
     res.status(500).json({

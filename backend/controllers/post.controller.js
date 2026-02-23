@@ -1,8 +1,8 @@
 import Post from '../models/Post.model.js';
 import Account from '../models/Account.model.js';
-import { getPostStats } from '../services/facebook.service.js';
-import { getLinkedInPostStats } from '../services/linkedin.service.js';
-import { getInstagramPostStats } from '../services/instagram.service.js';
+import { getPostStats, editFacebookPost } from '../services/facebook.service.js';
+import { getLinkedInPostStats, editLinkedInPost } from '../services/linkedin.service.js';
+import { getInstagramPostStats, editInstagramPost } from '../services/instagram.service.js';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -554,14 +554,112 @@ export const updatePost = async (req, res) => {
       });
     }
 
-    if (post.status === 'published') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot update published post'
-      });
+    // Track if this is a published post being edited
+    const isPublishedPost = post.status === 'published';
+    const editResults = {
+      success: [],
+      failed: []
+    };
+
+    // If post is published, try to edit on platforms
+    if (isPublishedPost && caption && post.publishedPlatforms && post.publishedPlatforms.length > 0) {
+      console.log(`[Update Post] Editing published post ${post._id} on platforms...`);
+      
+      for (const platformEntry of post.publishedPlatforms) {
+        // Only try to edit posts that were successfully published
+        if (platformEntry.status === 'success' && platformEntry.platformPostId) {
+          try {
+            let editResult;
+            
+            switch (platformEntry.platform) {
+              case 'facebook':
+                // Get Facebook account and page access token
+                const facebookAccount = await Account.findOne({
+                  user: userId,
+                  platform: 'facebook',
+                  isActive: true
+                });
+                
+                if (!facebookAccount) {
+                  throw new Error('Facebook account not found');
+                }
+                
+                // Get page access token
+                const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+                  params: {
+                    access_token: facebookAccount.accessToken,
+                    fields: 'id,access_token'
+                  }
+                });
+                
+                const pageId = platformEntry.pageId || (pagesResponse.data.data?.[0]?.id);
+                const selectedPage = pagesResponse.data.data?.find(p => p.id === pageId) || pagesResponse.data.data?.[0];
+                
+                if (!selectedPage || !selectedPage.access_token) {
+                  throw new Error('Page access token not found');
+                }
+                
+                editResult = await editFacebookPost(
+                  platformEntry.platformPostId,
+                  selectedPage.access_token,
+                  caption
+                );
+                editResults.success.push({
+                  platform: 'facebook',
+                  message: editResult.message || 'Post updated successfully'
+                });
+                break;
+                
+              case 'instagram':
+                // Instagram doesn't support editing
+                editResult = await editInstagramPost(
+                  platformEntry.platformPostId,
+                  '', // accessToken not needed since it will throw
+                  caption
+                );
+                break;
+                
+              case 'linkedin':
+                // LinkedIn doesn't support editing
+                editResult = await editLinkedInPost(
+                  platformEntry.platformPostId,
+                  '', // accessToken not needed since it will throw
+                  caption
+                );
+                break;
+                
+              default:
+                throw new Error(`Unknown platform: ${platformEntry.platform}`);
+            }
+          } catch (error) {
+            // Log the error but continue with other platforms
+            const errorMessage = error.message || 'Failed to edit post';
+            editResults.failed.push({
+              platform: platformEntry.platform,
+              error: errorMessage
+            });
+            console.error(`[Update Post] Failed to edit ${platformEntry.platform} post:`, errorMessage);
+          }
+        }
+      }
+      
+      // If all platforms failed, return error
+      if (editResults.success.length === 0 && editResults.failed.length > 0) {
+        const allErrors = editResults.failed.map(f => `${f.platform}: ${f.error}`).join('; ');
+        return res.status(400).json({
+          success: false,
+          message: `Failed to edit post on all platforms: ${allErrors}`,
+          editResults
+        });
+      }
+      
+      // If some platforms succeeded and some failed, return partial success
+      if (editResults.failed.length > 0) {
+        console.warn(`[Update Post] Partial success: ${editResults.success.length} succeeded, ${editResults.failed.length} failed`);
+      }
     }
 
-    // Update fields
+    // Update fields in database
     if (caption) post.caption = caption;
     if (platforms) post.platforms = Array.isArray(platforms) ? platforms : [platforms];
     if (scheduledDate && scheduledTime) {
@@ -635,10 +733,23 @@ export const updatePost = async (req, res) => {
 
     await post.save();
 
+    // Build response message
+    let message = 'Post updated successfully';
+    if (isPublishedPost) {
+      if (editResults.success.length > 0 && editResults.failed.length === 0) {
+        message = `Post updated successfully on all platforms: ${editResults.success.map(s => s.platform).join(', ')}`;
+      } else if (editResults.success.length > 0 && editResults.failed.length > 0) {
+        const successPlatforms = editResults.success.map(s => s.platform).join(', ');
+        const failedPlatforms = editResults.failed.map(f => `${f.platform} (${f.error})`).join('; ');
+        message = `Post updated on: ${successPlatforms}. Failed on: ${failedPlatforms}`;
+      }
+    }
+
     res.json({
       success: true,
-      message: 'Post updated successfully',
-      post
+      message: message,
+      post,
+      editResults: isPublishedPost ? editResults : undefined
     });
   } catch (error) {
     res.status(500).json({

@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import { userAPI } from '../api/user.api'
 
 export default function Settings(){
-  const { user, updateUser, logout } = useAuth()
+  const { user, updateUser, logout, checkAuth } = useAuth()
   const { addNotification } = useApp()
   
   // Form state
@@ -26,6 +26,9 @@ export default function Settings(){
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState(null)
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   
   // Password change state
   const [passwordData, setPasswordData] = useState({
@@ -35,6 +38,17 @@ export default function Settings(){
   })
   const [passwordErrors, setPasswordErrors] = useState({})
   const [passwordLoading, setPasswordLoading] = useState(false)
+
+  // Get user initials for avatar
+  const getInitials = () => {
+    if (user?.username) {
+      return user.username.substring(0, 2).toUpperCase()
+    }
+    if (user?.email) {
+      return user.email.substring(0, 2).toUpperCase()
+    }
+    return 'U'
+  }
 
   // Initialize form data from user
   useEffect(() => {
@@ -49,6 +63,16 @@ export default function Settings(){
         postPublished: user.notificationPreferences?.postPublished !== false,
         postFailed: user.notificationPreferences?.postFailed !== false
       })
+      // Set profile photo preview if exists
+      if (user.profilePhoto) {
+        const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4000'
+        const photoUrl = user.profilePhoto.startsWith('http') 
+          ? user.profilePhoto 
+          : `${backendUrl}${user.profilePhoto}`
+        setProfilePhotoPreview(photoUrl)
+      } else {
+        setProfilePhotoPreview(null)
+      }
     }
   }, [user])
 
@@ -140,6 +164,61 @@ export default function Settings(){
     }
   }
 
+  // Handle profile photo upload
+  const handleProfilePhotoChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        addNotification('Please select an image file', 'error')
+        return
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        addNotification('Image size must be less than 5MB', 'error')
+        return
+      }
+      setProfilePhotoFile(file)
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProfilePhotoPreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+      setIsDirty(true)
+    }
+  }
+
+  // Upload profile photo
+  const handleUploadProfilePhoto = async () => {
+    if (!profilePhotoFile) {
+      addNotification('Please select a photo to upload', 'error')
+      return
+    }
+
+    setUploadingPhoto(true)
+    try {
+      const response = await userAPI.uploadProfilePhoto(profilePhotoFile)
+
+      if (response.success) {
+        // Update user in context with the response
+        updateUser(response.user)
+        // Also refresh user data from server to ensure consistency
+        await checkAuth()
+        setProfilePhotoFile(null)
+        setIsDirty(false)
+        addNotification('Profile photo updated successfully', 'success')
+      } else {
+        addNotification(response.message || 'Failed to upload profile photo', 'error')
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to upload profile photo'
+      addNotification(errorMessage, 'error')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   // Save profile changes
   const handleSaveProfile = async () => {
     if (!validateForm()) {
@@ -191,6 +270,17 @@ export default function Settings(){
         postPublished: user.notificationPreferences?.postPublished !== false,
         postFailed: user.notificationPreferences?.postFailed !== false
       })
+      // Reset profile photo preview
+      if (user.profilePhoto) {
+        const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4000'
+        const photoUrl = user.profilePhoto.startsWith('http') 
+          ? user.profilePhoto 
+          : `${backendUrl}${user.profilePhoto}`
+        setProfilePhotoPreview(photoUrl)
+      } else {
+        setProfilePhotoPreview(null)
+      }
+      setProfilePhotoFile(null)
       setIsDirty(false)
       setErrors({})
     }
@@ -276,6 +366,56 @@ export default function Settings(){
       <div className="bg-white rounded-xl shadow-md p-4 mb-4">
         <h3 className="text-base font-semibold mb-4">Profile Settings</h3>
         <div className="space-y-4">
+          {/* Profile Photo Upload */}
+          <div className="flex flex-col items-center sm:items-start gap-4 pb-4 border-b border-gray-200">
+            <label className="block text-sm font-medium">Profile Photo</label>
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="relative">
+                {profilePhotoPreview ? (
+                  <img 
+                    src={profilePhotoPreview} 
+                    alt="Profile" 
+                    className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-orange-400 flex items-center justify-center text-white font-semibold text-2xl">
+                    {getInitials()}
+                  </div>
+                )}
+                <label 
+                  htmlFor="profilePhotoInput"
+                  className="absolute bottom-0 right-0 w-8 h-8 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center cursor-pointer border-2 border-white shadow-md"
+                  title="Change photo"
+                >
+                  <i className="fas fa-camera text-white text-xs"></i>
+                </label>
+                <input
+                  id="profilePhotoInput"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfilePhotoChange}
+                  className="hidden"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-gray-500">Upload a profile photo (max 5MB)</p>
+                {profilePhotoFile && (
+                  <button
+                    onClick={handleUploadProfilePhoto}
+                    disabled={uploadingPhoto}
+                    className={`px-4 py-2 rounded-lg min-h-[44px] text-sm ${
+                      uploadingPhoto
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    } text-white`}
+                  >
+                    {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">Username</label>

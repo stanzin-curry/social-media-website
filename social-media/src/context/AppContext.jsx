@@ -16,9 +16,9 @@ export function AppProvider({ children }) {
   })
 
   const [accountData, setAccountData] = useState({
-    instagram: { username: '', followers: 0, posts: 0, lastSync: '' },
-    facebook: { username: '', followers: 0, posts: 0, lastSync: '' },
-    linkedin: { username: '', followers: 0, posts: 0, lastSync: '' }
+    instagram: { username: '', followers: 0, posts: 0, lastSync: '', pageCount: 0, accountId: null },
+    facebook: { username: '', followers: 0, posts: 0, lastSync: '', pageCount: 0, accountId: null },
+    linkedin: { username: '', followers: 0, posts: 0, lastSync: '', pageCount: 0, accountId: null }
   })
 
   const [selectedPlatforms, setSelectedPlatforms] = useState([])
@@ -46,31 +46,71 @@ export function AppProvider({ children }) {
         const accounts = {}
         const data = {}
         
+        // First pass: collect all accounts
+        const allAccounts = {}
         response.accounts.forEach(account => {
-          // Handle LinkedIn account types
           if (account.platform === 'linkedin' || account.platform === 'linkedin-company') {
-            // Mark LinkedIn as connected if either personal or company account exists
-            accounts['linkedin'] = accounts['linkedin'] || account.isActive
-            // Store data for the account type that exists
-            if (account.isActive) {
+            allAccounts['linkedin'] = allAccounts['linkedin'] || []
+            allAccounts['linkedin'].push(account)
+          } else {
+            allAccounts[account.platform] = account
+          }
+        })
+        
+        // Process each platform
+        Object.keys(allAccounts).forEach(platform => {
+          if (platform === 'linkedin') {
+            // Handle LinkedIn - can have both personal and company
+            const linkedInAccounts = allAccounts[platform]
+            accounts['linkedin'] = linkedInAccounts.some(acc => acc.isActive)
+            
+            // Find the active account (prefer company over personal for display)
+            const activeAccount = linkedInAccounts.find(acc => acc.isActive && acc.platform === 'linkedin-company') 
+              || linkedInAccounts.find(acc => acc.isActive && acc.platform === 'linkedin')
+            
+            if (activeAccount) {
               data['linkedin'] = {
-                username: account.platformUsername,
-                followers: account.followers || 0,
-                posts: 0,
-                lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never',
-                accountType: account.platform === 'linkedin-company' ? 'company' : 'personal'
+                username: activeAccount.platformUsername,
+                followers: activeAccount.followers || 0,
+                posts: activeAccount.postCount || 0,
+                pageCount: activeAccount.pageCount || 0,
+                lastSync: activeAccount.lastSync ? new Date(activeAccount.lastSync).toLocaleString() : 'Never',
+                accountType: activeAccount.platform === 'linkedin-company' ? 'company' : 'personal',
+                accountId: activeAccount._id
               }
             }
           } else {
-            accounts[account.platform] = account.isActive
-            data[account.platform] = {
-              username: account.platformUsername,
-              followers: account.followers || 0,
-              posts: 0,
-              lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never'
+            const account = allAccounts[platform]
+            accounts[platform] = account.isActive
+            if (account.isActive) {
+              data[platform] = {
+                username: account.platformUsername,
+                followers: account.followers || 0,
+                posts: account.postCount || 0,
+                pageCount: account.pageCount || 0,
+                lastSync: account.lastSync ? new Date(account.lastSync).toLocaleString() : 'Never',
+                accountId: account._id || account.id
+              }
             }
           }
         })
+        
+        // Special handling for Instagram: count Instagram accounts from Facebook pages and get account ID
+        if (accounts['facebook'] && data['facebook'] && accounts['instagram']) {
+          const facebookAccount = response.accounts.find(acc => acc.platform === 'facebook' && acc.isActive)
+          const instagramAccount = response.accounts.find(acc => acc.platform === 'instagram' && acc.isActive)
+          
+          if (facebookAccount && facebookAccount.pages) {
+            const instagramCount = facebookAccount.pages.filter(page => page.instagramAccount).length
+            if (data['instagram']) {
+              data['instagram'].pageCount = instagramCount || 1
+              // Set account ID if Instagram account exists
+              if (instagramAccount && !data['instagram'].accountId) {
+                data['instagram'].accountId = instagramAccount._id
+              }
+            }
+          }
+        }
         
         setConnectedAccounts(accounts)
         setAccountData(data)

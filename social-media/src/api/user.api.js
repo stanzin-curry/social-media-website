@@ -20,5 +20,16 @@ export const userAPI = {
     const response = await api.delete('/users/account');
     return response.data;
   },
+
+  uploadProfilePhoto: async (photoFile) => {
+    const formData = new FormData();
+    formData.append('profilePhoto', photoFile);
+    const response = await api.post('/users/profile/photo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };
 

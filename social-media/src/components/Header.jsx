@@ -11,7 +11,7 @@ export default function Header({ toggleSidebar }){
   const dropdownRef = useRef(null)
 
   const titles = {
-    '/dashboard': { title: 'Dashboard', subtitle: "Welcome back! Here's your overview" },
+    '/dashboard': { title: 'Dashboard', subtitle: (username) => username ? `Welcome back ${username}! Here's your overview` : "Welcome back! Here's your overview" },
     '/calendar': { title: 'Calendar', subtitle: 'View and manage your scheduled posts' },
     '/create': { title: 'Create Post', subtitle: 'Compose and schedule new content' },
     '/activity': { title: 'Activity History', subtitle: 'View all your post activity and performance' },
@@ -20,7 +20,11 @@ export default function Header({ toggleSidebar }){
     '/settings': { title: 'Settings', subtitle: 'Manage your account preferences' }
   }
   const path = location.pathname
-  const t = titles[path] || { title: 'Dashboard', subtitle: '' }
+  const titleConfig = titles[path] || { title: 'Dashboard', subtitle: '' }
+  const subtitle = typeof titleConfig.subtitle === 'function' 
+    ? titleConfig.subtitle(user?.username || '') 
+    : titleConfig.subtitle
+  const t = { title: titleConfig.title, subtitle }
 
   // Get user initials
   const getInitials = () => {
@@ -80,9 +84,22 @@ export default function Header({ toggleSidebar }){
             onClick={() => setShowDropdown(!showDropdown)}
             className="flex items-center gap-2 hover:opacity-80 transition"
           >
-            <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-gradient-to-br from-green-400 to-orange-400 flex items-center justify-center text-white font-semibold text-sm lg:text-base">
-              {getInitials()}
-            </div>
+            {user?.profilePhoto ? (
+              <img 
+                src={user.profilePhoto.startsWith('http') ? user.profilePhoto : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4000'}${user.profilePhoto}`}
+                alt={user.username || 'User'}
+                className="w-8 h-8 lg:w-10 lg:h-10 rounded-full object-cover border-2 border-gray-200"
+                onError={(e) => {
+                  // Fallback to initials if image fails to load
+                  e.target.style.display = 'none';
+                  e.target.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : (
+              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-gradient-to-br from-green-400 to-orange-400 flex items-center justify-center text-white font-semibold text-sm lg:text-base">
+                {getInitials()}
+              </div>
+            )}
             {user?.username && (
               <span className="hidden lg:block text-sm font-medium text-gray-700">
                 {user.username}
@@ -94,9 +111,26 @@ export default function Header({ toggleSidebar }){
           {showDropdown && (
             <div className="absolute right-0 mt-2 w-48 sm:w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
               {user && (
-                <div className="px-4 py-2 border-b border-gray-200">
-                  <p className="text-sm font-semibold text-gray-800">{user.username}</p>
-                  <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-3">
+                  {user.profilePhoto ? (
+                    <img 
+                      src={user.profilePhoto.startsWith('http') ? user.profilePhoto : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4000'}${user.profilePhoto}`}
+                      alt={user.username || 'User'}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 flex-shrink-0"
+                      onError={(e) => {
+                        // Fallback to initials if image fails to load
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-orange-400 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+                      {getInitials()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{user.username}</p>
+                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  </div>
                 </div>
               )}
               <button
