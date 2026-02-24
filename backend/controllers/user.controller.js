@@ -1,6 +1,7 @@
 import User from '../models/User.model.js';
 import Account from '../models/Account.model.js';
 import Post from '../models/Post.model.js';
+import Notification from '../models/Notification.model.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -206,6 +207,9 @@ export const deleteAccount = async (req, res) => {
 
     // Delete all user's posts
     await Post.deleteMany({ user: userId });
+
+    // Delete all user's notifications
+    await Notification.deleteMany({ user: userId });
 
     // Delete the user account
     await User.findByIdAndDelete(userId);

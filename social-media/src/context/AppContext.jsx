@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import { accountAPI } from '../api/account.api.js'
 import { postAPI } from '../api/post.api.js'
+import { notificationAPI } from '../api/notification.api.js'
 
 const AppContext = createContext()
 //hey
@@ -30,10 +31,21 @@ export function AppProvider({ children }) {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [loading, setLoading] = useState(false)
 
-  // Load accounts and posts on mount
+  // Track server notification IDs to avoid duplicates
+  const serverNotificationIds = useRef(new Set())
+
+  // Load accounts, posts, and notifications on mount
   useEffect(() => {
     loadAccounts()
     loadPosts()
+    loadServerNotifications()
+    
+    // Set up polling for new notifications every 30 seconds
+    const notificationInterval = setInterval(() => {
+      loadServerNotifications()
+    }, 30000)
+    
+    return () => clearInterval(notificationInterval)
   }, [])
 
   const loadAccounts = async () => {
@@ -137,10 +149,57 @@ export function AppProvider({ children }) {
       if (publishedResponse.success) {
         setPublishedPosts(publishedResponse.posts || [])
       }
+      
+      // Also reload notifications when posts are reloaded
+      loadServerNotifications()
     } catch (error) {
       console.error('Error loading posts:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadServerNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      const response = await notificationAPI.getNotifications({ limit: 50 })
+      
+      if (response.success && response.notifications) {
+        // Convert server notifications to local format and merge
+        const newServerNotifications = response.notifications
+          .filter(notif => !serverNotificationIds.current.has(notif._id))
+          .map(notif => {
+            serverNotificationIds.current.add(notif._id)
+            // Map server notification types to local types
+            const typeMap = {
+              'postPublished': 'success',
+              'postFailed': 'error'
+            }
+            return {
+              id: notif._id,
+              message: notif.message,
+              type: typeMap[notif.type] || 'info',
+              timestamp: notif.createdAt,
+              read: notif.read,
+              fromServer: true,
+              notificationId: notif._id // Keep original ID for marking as read
+            }
+          })
+        
+        if (newServerNotifications.length > 0) {
+          setNotifications(prev => {
+            // Merge with existing notifications, avoiding duplicates
+            const existingIds = new Set(prev.map(n => n.id))
+            const uniqueNew = newServerNotifications.filter(n => !existingIds.has(n.id))
+            return [...uniqueNew, ...prev]
+          })
+        }
+      }
+    } catch (error) {
+      // Silently fail - don't disrupt user experience
+      console.error('Error loading server notifications:', error)
     }
   }
 
@@ -242,10 +301,39 @@ export function AppProvider({ children }) {
   }
 
   const addNotification = (message, type = 'info') => {
-    setNotifications(prev => [{ id: Date.now(), message, type, timestamp: new Date().toISOString() }, ...prev])
+    setNotifications(prev => [{ id: Date.now(), message, type, timestamp: new Date().toISOString(), fromServer: false }, ...prev])
   }
 
-  const clearAllNotifications = () => setNotifications([])
+  const clearAllNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (token) {
+        // Mark all server notifications as read
+        await notificationAPI.markAllAsRead()
+      }
+    } catch (error) {
+      console.error('Error marking notifications as read:', error)
+    }
+    setNotifications([])
+    serverNotificationIds.current.clear()
+  }
+
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const token = localStorage.getItem('token')
+      if (token && notificationId) {
+        await notificationAPI.markAsRead(notificationId)
+      }
+      // Update local state
+      setNotifications(prev => prev.map(n => 
+        n.notificationId === notificationId || n.id === notificationId 
+          ? { ...n, read: true }
+          : n
+      ))
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
 
   const schedulePost = async ({ caption, date, time, platforms, media, selectedPages }) => {
     if (!caption || !date || !time || !platforms?.length) {
@@ -407,6 +495,8 @@ export function AppProvider({ children }) {
     updatePost,
     addNotification,
     clearAllNotifications,
+    markNotificationAsRead,
+    loadServerNotifications,
     changeMonth,
     updatePlatformSelectors,
     setCurrentMonth,

@@ -82,8 +82,8 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const logout = () => {
-    authAPI.logout()
+  const logout = async () => {
+    await authAPI.logout()
     setUser(null)
     setIsAuthenticated(false)
   }

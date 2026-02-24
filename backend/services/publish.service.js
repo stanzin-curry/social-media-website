@@ -1,5 +1,7 @@
 import Post from '../models/Post.model.js';
 import Account from '../models/Account.model.js';
+import User from '../models/User.model.js';
+import Notification from '../models/Notification.model.js';
 import { postToFacebook, publishToFacebook } from './facebook.service.js';
 import { publishToInstagram } from './instagram.service.js';
 import { publishToLinkedIn } from './linkedin.service.js';
@@ -377,6 +379,56 @@ export const publishPost = async (post) => {
   }
 
   await post.save();
+
+  // Create notifications based on user preferences
+  try {
+    // Get user ID - handle both populated and unpopulated user references
+    let userId = null;
+    if (typeof post.user === 'object' && post.user._id) {
+      userId = post.user._id;
+    } else if (post.user) {
+      userId = post.user;
+    }
+    
+    if (userId) {
+      const user = await User.findById(userId);
+      
+      if (user) {
+        // Check if post was successfully published
+        if (post.status === 'published' && user.notificationPreferences?.postPublished !== false) {
+          const platformNames = results.map(r => r.platform).join(', ');
+          const message = results.length === post.platforms.length
+            ? `Your post has been successfully published to ${platformNames}`
+            : `Your post has been partially published to ${platformNames}`;
+          
+          await Notification.create({
+            user: user._id,
+            type: 'postPublished',
+            message,
+            post: post._id
+          });
+        }
+        
+        // Check if post failed
+        if (post.status === 'failed' && user.notificationPreferences?.postFailed !== false) {
+          const errorMessages = errors.length > 0 
+            ? errors.map(e => `${e.platform}: ${e.error}`).join('; ')
+            : 'Unknown error occurred';
+          const message = `Your post failed to publish. ${errorMessages}`;
+          
+          await Notification.create({
+            user: user._id,
+            type: 'postFailed',
+            message,
+            post: post._id
+          });
+        }
+      }
+    }
+  } catch (notificationError) {
+    // Don't fail the publish operation if notification creation fails
+    console.error('[Scheduler] Error creating notification:', notificationError);
+  }
 
   return {
     success: results.length > 0,
