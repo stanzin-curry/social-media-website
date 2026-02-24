@@ -882,22 +882,55 @@ export const refreshPostAnalytics = async (req, res) => {
           // Determine pageId and postId
           let pageId;
           let postIdOnly = platformEntry.platformPostId.trim();
+          let fullPostId = postIdOnly;
 
+          // Strategy 1: Use stored pageId if available
           if (platformEntry.pageId) {
             pageId = platformEntry.pageId;
+            // Ensure postId has the correct format: {pageId}_{postId}
+            if (!postIdOnly.includes('_')) {
+              // PostId doesn't have pageId prefix, add it
+              fullPostId = `${pageId}_${postIdOnly}`;
+            } else {
+              // PostId already has format, verify it matches stored pageId
+              const parts = postIdOnly.split('_');
+              if (parts.length >= 2 && parts[0] === pageId) {
+                // Format is correct
+                fullPostId = postIdOnly;
+              } else {
+                // Format exists but pageId doesn't match, reconstruct with stored pageId
+                const actualPostId = parts.slice(1).join('_'); // Handle multiple underscores
+                fullPostId = `${pageId}_${actualPostId}`;
+              }
+            }
           } else if (postIdOnly.includes('_')) {
+            // Strategy 2: Extract pageId from postId format: {pageId}_{postId}
             const parts = postIdOnly.split('_');
             if (parts.length >= 2 && parts[0] && parts[1]) {
               pageId = parts[0];
+              fullPostId = postIdOnly; // Already in correct format
             } else {
               errors.push('Facebook: Invalid post ID format');
               continue;
             }
           } else {
+            // Strategy 3: No pageId stored and postId doesn't have prefix - use first page
+            if (!pagesResponse.data.data || pagesResponse.data.data.length === 0) {
+              errors.push('Facebook: No Facebook pages found and cannot determine page ID');
+              continue;
+            }
             pageId = pagesResponse.data.data[0].id;
-            postIdOnly = `${pageId}_${postIdOnly}`;
+            fullPostId = `${pageId}_${postIdOnly}`;
+            console.log(`[Refresh Analytics] Reconstructed post ID: ${fullPostId} (pageId: ${pageId}, postId: ${postIdOnly})`);
           }
 
+          // Verify we have a valid pageId
+          if (!pageId) {
+            errors.push('Facebook: Could not determine page ID');
+            continue;
+          }
+
+          // Find the correct page
           const selectedPage = pagesResponse.data.data.find(p => p.id === pageId) || pagesResponse.data.data[0];
           
           if (!selectedPage || !selectedPage.access_token) {
@@ -905,7 +938,9 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          analytics = await getPostStats(pageId, postIdOnly, selectedPage.access_token);
+          // Use the full postId (with pageId prefix) for API call
+          console.log(`[Refresh Analytics] Fetching analytics for post: ${fullPostId} on page: ${pageId}`);
+          analytics = await getPostStats(pageId, fullPostId, selectedPage.access_token);
           successes.push('Facebook');
 
         } else if (platformEntry.platform === 'linkedin') {
