@@ -41,3 +41,4 @@ sessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('Session', sessionSchema);
 
+
