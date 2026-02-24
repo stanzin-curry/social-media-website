@@ -287,9 +287,24 @@ export const refreshAccountToken = async (req, res) => {
           }
         }
       } else if (account.platform === 'linkedin' || account.platform === 'linkedin-company') {
-        // LinkedIn doesn't provide follower count via API easily
-        // We'll keep it at 0 or use a placeholder
-        followerCount = account.followers || 0;
+        // For LinkedIn company pages, try to fetch follower count
+        if (account.platform === 'linkedin-company' && account.pages && account.pages.length > 0) {
+          try {
+            const { getLinkedInOrganizationFollowers } = await import('../services/linkedin.service.js');
+            const firstPage = account.pages[0];
+            if (firstPage.urn) {
+              followerCount = await getLinkedInOrganizationFollowers(firstPage.urn, account.accessToken);
+            }
+          } catch (error) {
+            console.log('[LinkedIn] Could not fetch follower count (this is normal - requires special API access)');
+            // Keep existing followers count or 0
+            followerCount = account.followers || 0;
+          }
+        } else {
+          // For personal LinkedIn profiles, there's no public API to get follower counts
+          // LinkedIn only provides connection counts (1st-degree connections) which requires special approval
+          followerCount = account.followers || 0;
+        }
       }
     } catch (error) {
       console.error('Error fetching followers:', error.message);

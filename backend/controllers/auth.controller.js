@@ -1,4 +1,5 @@
 import User from '../models/User.model.js';
+import Session from '../models/Session.model.js';
 import { generateToken } from '../utils/jwt.js';
 import { getLinkedInAuthUrl, getLinkedInCompanyAuthUrl, getFacebookAuthUrl, getInstagramAuthUrl } from '../services/oauth.service.js';
 import { connectLinkedInAccount, connectFacebookAccount, connectInstagramAccount } from '../services/oauth.service.js';
@@ -32,6 +33,18 @@ export const register = async (req, res) => {
 
     const user = await User.create({ username, email, password });
     const token = generateToken(user._id);
+
+    // Get device info from request headers
+    const deviceInfo = req.headers['user-agent'] || 'Unknown Device';
+    const ipAddress = req.ip || req.connection.remoteAddress || 'Unknown';
+
+    // Create session for new user
+    await Session.create({
+      user: user._id,
+      token,
+      deviceInfo: deviceInfo.substring(0, 200), // Limit length
+      ipAddress
+    });
 
     // Return full user object excluding password
     const userResponse = user.toObject();
@@ -78,7 +91,32 @@ export const login = async (req, res) => {
       });
     }
 
+    // Check existing active sessions for this user
+    const MAX_SESSIONS = 2;
+    const existingSessions = await Session.find({ user: user._id })
+      .sort({ createdAt: -1 })
+      .limit(MAX_SESSIONS);
+
+    // If user already has 2 active sessions, remove the oldest one
+    if (existingSessions.length >= MAX_SESSIONS) {
+      const oldestSession = existingSessions[existingSessions.length - 1];
+      await Session.deleteOne({ _id: oldestSession._id });
+    }
+
+    // Generate new token
     const token = generateToken(user._id);
+
+    // Get device info from request headers
+    const deviceInfo = req.headers['user-agent'] || 'Unknown Device';
+    const ipAddress = req.ip || req.connection.remoteAddress || 'Unknown';
+
+    // Create new session
+    await Session.create({
+      user: user._id,
+      token,
+      deviceInfo: deviceInfo.substring(0, 200), // Limit length
+      ipAddress
+    });
 
     // Return full user object excluding password
     const userResponse = user.toObject();
@@ -94,6 +132,47 @@ export const login = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Login failed'
+    });
+  }
+};
+
+export const logout = async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (token) {
+      // Remove session from database
+      await Session.deleteOne({ token });
+    }
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Logout failed'
+    });
+  }
+};
+
+// Logout from all devices
+export const logoutAll = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Remove all sessions for this user
+    await Session.deleteMany({ user: userId });
+
+    res.json({
+      success: true,
+      message: 'Logged out from all devices successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Logout failed'
     });
   }
 };
@@ -308,8 +387,9 @@ export const linkedinCompanyCallback = async (req, res) => {
 
     // Fetch company pages
     let pagesArray = [];
+    let linkedInFollowers = 0;
     try {
-      const { getLinkedInCompanyPages } = await import('../services/linkedin.service.js');
+      const { getLinkedInCompanyPages, getLinkedInOrganizationFollowers } = await import('../services/linkedin.service.js');
       const companyPages = await getLinkedInCompanyPages(access_token);
       
       pagesArray = companyPages.map(page => ({
@@ -323,13 +403,24 @@ export const linkedinCompanyCallback = async (req, res) => {
       console.log('Total company pages found:', pagesArray.length);
       console.log('Pages data:', JSON.stringify(pagesArray, null, 2));
       console.log('=== End LinkedIn Company Pages Response ===');
+
+      // Try to fetch followers for the first company page (if available)
+      if (pagesArray.length > 0 && pagesArray[0].urn) {
+        try {
+          linkedInFollowers = await getLinkedInOrganizationFollowers(pagesArray[0].urn, access_token);
+          console.log(`[LinkedIn] Fetched ${linkedInFollowers} followers for company page`);
+        } catch (followerError) {
+          console.log('[LinkedIn] Could not fetch follower count (this is normal - requires special API access)');
+          // Keep followers at 0 - this is expected for many LinkedIn accounts
+        }
+      }
     } catch (pageError) {
       console.error('Error fetching LinkedIn company pages:', pageError);
       // Continue without pages - user can still post to personal profile
     }
 
     // Save account with pages (accountType = 'company')
-    await connectLinkedInAccount({
+    const account = await connectLinkedInAccount({
       userId,
       accessToken: access_token,
       refreshToken: refresh_token,
@@ -339,6 +430,12 @@ export const linkedinCompanyCallback = async (req, res) => {
       pages: pagesArray,
       accountType: 'company'
     });
+
+    // Update followers count if we got it
+    if (account && linkedInFollowers > 0) {
+      account.followers = linkedInFollowers;
+      await account.save();
+    }
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=linkedin_company_connected`);
   } catch (error) {
@@ -538,20 +635,24 @@ export const facebookCallback = async (req, res) => {
             const igAccount = page.instagram_business_account;
             const pageAccessToken = page.access_token; // Use Page's access token, not user's
             
-            // Get Instagram account username
+            // Get Instagram account username and followers
             let igUsername = igAccount.username || igAccount.id;
+            let igFollowers = 0;
             try {
               const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${igAccount.id}`, {
                 params: {
                   access_token: pageAccessToken,
-                  fields: 'username'
+                  fields: 'username,followers_count'
                 }
               });
               if (igInfoResponse.data.username) {
                 igUsername = igInfoResponse.data.username;
               }
+              if (igInfoResponse.data.followers_count !== undefined) {
+                igFollowers = igInfoResponse.data.followers_count;
+              }
             } catch (igInfoError) {
-              console.error('Error fetching Instagram username:', igInfoError.response?.data || igInfoError.message);
+              console.error('Error fetching Instagram username/followers:', igInfoError.response?.data || igInfoError.message);
               // Continue with ID if username fetch fails
             }
 
@@ -567,6 +668,7 @@ export const facebookCallback = async (req, res) => {
                 platformUserId: igAccount.id,
                 platformUsername: igUsername,
                 accessToken: pageAccessToken, // Critical: Use Page's token, not user's
+                followers: igFollowers,
                 isActive: true,
                 lastSync: new Date()
               },
@@ -587,14 +689,38 @@ export const facebookCallback = async (req, res) => {
       // Continue with account save even if Pages fetch fails
     }
 
+    // Fetch followers for the first page (if available)
+    let facebookFollowers = 0;
+    if (pagesArray && pagesArray.length > 0) {
+      try {
+        const firstPage = pagesArray[0];
+        const pageInfo = await axios.get(`https://graph.facebook.com/v19.0/${firstPage.id}`, {
+          params: {
+            fields: 'fan_count',
+            access_token: firstPage.accessToken
+          }
+        });
+        facebookFollowers = pageInfo.data.fan_count || 0;
+      } catch (error) {
+        console.error('Error fetching Facebook followers:', error.message);
+        // Continue without followers count
+      }
+    }
+
     // Save Facebook account with pages array
-    await connectFacebookAccount({
+    const account = await connectFacebookAccount({
       userId,
       accessToken: access_token,
       platformUserId,
       platformUsername,
       pages: pagesArray
     });
+
+    // Update followers count
+    if (account && facebookFollowers > 0) {
+      account.followers = facebookFollowers;
+      await account.save();
+    }
 
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?success=facebook_connected`);
   } catch (error) {
@@ -721,20 +847,24 @@ export const instagramCallback = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/accounts?error=no_instagram_account`);
     }
 
-    // Get Instagram account username
+    // Get Instagram account username and followers
     let igUsername = instagramAccount.username || instagramAccount.id;
+    let igFollowers = 0;
     try {
       const igInfoResponse = await axios.get(`https://graph.facebook.com/v19.0/${instagramAccount.id}`, {
         params: {
           access_token: pageAccessToken,
-          fields: 'username'
+          fields: 'username,followers_count'
         }
       });
       if (igInfoResponse.data.username) {
         igUsername = igInfoResponse.data.username;
       }
+      if (igInfoResponse.data.followers_count !== undefined) {
+        igFollowers = igInfoResponse.data.followers_count;
+      }
     } catch (igInfoError) {
-      console.error('Error fetching Instagram username:', igInfoError.response?.data || igInfoError.message);
+      console.error('Error fetching Instagram username/followers:', igInfoError.response?.data || igInfoError.message);
       // Continue with ID if username fetch fails
     }
 
@@ -751,6 +881,7 @@ export const instagramCallback = async (req, res) => {
         platformUserId: instagramAccount.id,
         platformUsername: igUsername,
         accessToken: pageAccessToken, // Critical: Use Page's token, not user's
+        followers: igFollowers,
         isActive: true,
         lastSync: new Date()
       },

@@ -1,7 +1,9 @@
 import express from 'express';
 import { 
   register, 
-  login, 
+  login,
+  logout,
+  logoutAll,
   linkedinAuth,
   linkedinCompanyAuth,
   linkedinCallback,
@@ -22,6 +24,8 @@ const router = express.Router();
 // Authentication routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/logout', authenticate, logout);
+router.post('/logout-all', authenticate, logoutAll);
 router.get('/me', authenticate, async (req, res) => {
   try {
     // Fetch full user data excluding password

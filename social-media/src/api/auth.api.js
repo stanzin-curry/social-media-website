@@ -24,8 +24,17 @@ export const authAPI = {
     return response.data;
   },
 
-  logout: () => {
-    localStorage.removeItem('token');
+  logout: async () => {
+    try {
+      // Call backend to invalidate session
+      await api.post('/auth/logout');
+    } catch (error) {
+      // Even if the API call fails, we still want to remove the token
+      console.error('Logout error:', error);
+    } finally {
+      // Always remove token from localStorage
+      localStorage.removeItem('token');
+    }
   },
 
   getCurrentUser: async () => {

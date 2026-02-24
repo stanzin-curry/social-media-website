@@ -292,6 +292,54 @@ export const getLinkedInCompanyPages = async (accessToken) => {
 };
 
 /**
+ * Get LinkedIn organization follower count
+ * @param {string} organizationUrn - LinkedIn Organization URN (e.g., "urn:li:organization:123456")
+ * @param {string} accessToken - LinkedIn access token
+ * @returns {Promise<number>} Follower count, or 0 if unavailable
+ */
+export const getLinkedInOrganizationFollowers = async (organizationUrn, accessToken) => {
+  try {
+    // LinkedIn Organization Follower Statistics API
+    // Note: This requires the organization to have Community Management API access
+    // and proper permissions (w_organization_social)
+    const response = await axios.get(
+      'https://api.linkedin.com/v2/organizationalEntityFollowerStatistics',
+      {
+        params: {
+          q: 'organizationalEntity',
+          organizationalEntity: organizationUrn,
+          timeRange: '(start:0,end:1)' // Get current follower count
+        },
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0'
+        }
+      }
+    );
+
+    // The API returns follower statistics
+    if (response.data?.elements && response.data.elements.length > 0) {
+      const stats = response.data.elements[0];
+      // The follower count might be in different fields depending on API version
+      return stats.followerCountsByAssociationType?.ALL?.organicFollowerCount || 
+             stats.followerCountsByAssociationType?.ALL?.totalFollowerCount ||
+             stats.totalFollowerCount || 
+             0;
+    }
+    
+    return 0;
+  } catch (error) {
+    // LinkedIn API has limitations - follower statistics may not be available
+    // for all organizations or may require special partnerships
+    console.log(`[LinkedIn] Follower statistics not available for ${organizationUrn}:`, 
+      error.response?.data?.message || error.message);
+    
+    // Return 0 if unavailable (this is expected for many LinkedIn accounts)
+    return 0;
+  }
+};
+
+/**
  * Get LinkedIn post analytics/insights
  * @param {string} postUrn - LinkedIn Post URN (e.g., "urn:li:share:123456")
  * @param {string} accessToken - LinkedIn access token

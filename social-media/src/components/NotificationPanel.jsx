@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function NotificationPanel(){
-  const { notifications, clearAllNotifications } = useApp()
+  const { notifications, clearAllNotifications, markNotificationAsRead } = useApp()
   const [open, setOpen] = useState(false)
 
   // In Header we don't open it via context for brevity — user can toggle via button there hooking into state if you prefer.
@@ -18,7 +18,15 @@ export default function NotificationPanel(){
         {notifications.length === 0 ? (
           <div className="p-3 sm:p-4 text-center text-xs sm:text-sm text-gray-500">No new notifications</div>
         ) : notifications.map(n => (
-          <div key={n.id} className="p-3 sm:p-4 hover:bg-gray-50">
+          <div 
+            key={n.id} 
+            className={`p-3 sm:p-4 hover:bg-gray-50 cursor-pointer ${n.read ? 'opacity-60' : ''}`}
+            onClick={() => {
+              if (!n.read && n.fromServer && n.notificationId) {
+                markNotificationAsRead(n.notificationId)
+              }
+            }}
+          >
             <div className="flex items-start gap-2 sm:gap-3">
               <i className={`fas ${
                 n.type === 'success' ? 'fa-check-circle text-green-500' : 
