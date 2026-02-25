@@ -497,9 +497,13 @@ export const postToInstagram = async (accessToken, instagramId, imageUrl, captio
  * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
  */
 export const getPostStats = async (pageId, postId, pageAccessToken) => {
+  // Request correlation ID for better log tracking
+  const reqId = `fb-analytics-${postId}-${Date.now()}`;
+  console.log(`[${reqId}] Starting analytics refresh for post ${postId} on page ${pageId}`);
+  
   // Development/Testing Mode: Return mock data if ENABLE_MOCK_ANALYTICS is set
   if (process.env.ENABLE_MOCK_ANALYTICS === 'true' || process.env.NODE_ENV === 'development' && process.env.USE_MOCK_ANALYTICS === 'true') {
-    console.log(`[Facebook] Using MOCK analytics data for post ${postId} (Development Mode)`);
+    console.log(`[${reqId}] Using MOCK analytics data (Development Mode)`);
     // Generate realistic mock data with some randomness
     const baseLikes = Math.floor(Math.random() * 100) + 10;
     const baseComments = Math.floor(Math.random() * 20) + 2;
@@ -523,14 +527,14 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
       }
     });
     const tokenData = debugResponse.data.data;
-    console.log(`[Facebook] Token Debug for post ${postId}:`);
-    console.log(`  - Token Type: ${tokenData?.type || 'unknown'}`);
-    console.log(`  - Scopes:`, tokenData?.scopes);
-    console.log(`  - Granular Scopes:`, tokenData?.granular_scopes);
+    console.log(`[${reqId}] Token Debug:`);
+    console.log(`[${reqId}]   - Token Type: ${tokenData?.type || 'unknown'}`);
+    console.log(`[${reqId}]   - Scopes:`, tokenData?.scopes);
+    console.log(`[${reqId}]   - Granular Scopes:`, tokenData?.granular_scopes);
     
     // Check if this is actually a Page token
     if (tokenData?.type !== 'PAGE') {
-      console.warn(`[Facebook] WARNING: Token type is ${tokenData?.type}, expected PAGE token for analytics`);
+      console.warn(`[${reqId}] WARNING: Token type is ${tokenData?.type}, expected PAGE token for analytics`);
     }
     
     // Check page-specific permissions
@@ -543,61 +547,196 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
       );
       if (readEngagementScope && readEngagementScope.target_ids) {
         hasReadEngagementForPage = readEngagementScope.target_ids.includes(pageId);
-        console.log(`  - pages_read_engagement for page ${pageId}:`, hasReadEngagementForPage);
-        console.log(`  - pages_read_engagement target_ids:`, readEngagementScope.target_ids);
+        console.log(`[${reqId}]   - pages_read_engagement for page ${pageId}:`, hasReadEngagementForPage);
+        console.log(`[${reqId}]   - pages_read_engagement target_ids:`, readEngagementScope.target_ids);
       }
     }
     
-    console.log(`  - Has read_insights:`, tokenData?.scopes?.includes('read_insights'));
-    console.log(`  - Has pages_read_engagement (general):`, hasReadEngagement);
-    console.log(`  - Has pages_read_engagement (for this page):`, hasReadEngagementForPage);
+    console.log(`[${reqId}]   - Has read_insights:`, tokenData?.scopes?.includes('read_insights'));
+    console.log(`[${reqId}]   - Has pages_read_engagement (general):`, hasReadEngagement);
+    console.log(`[${reqId}]   - Has pages_read_engagement (for this page):`, hasReadEngagementForPage);
     
     if (!hasReadEngagementForPage && pageId) {
-      console.warn(`[Facebook] WARNING: pages_read_engagement not found for page ${pageId} in granular_scopes`);
+      console.warn(`[${reqId}] WARNING: pages_read_engagement not found for page ${pageId} in granular_scopes`);
     }
   } catch (debugError) {
-    console.warn(`[Facebook] Could not debug token:`, debugError.message);
+    console.warn(`[${reqId}] Could not debug token:`, debugError.message);
   }
 
   try {
-    // First, get basic post stats (likes, comments, shares)
-    const postResponse = await axios.get(
-      `https://graph.facebook.com/v19.0/${postId}`,
-      {
-        params: {
-          fields: 'shares,likes.summary(true),comments.summary(true)',
-          access_token: pageAccessToken
-        }
-      }
-    );
-
-    const postData = postResponse.data;
+    // First, detect post type to determine valid metrics
+    let postType = 'unknown';
+    let postData = null;
+    let likes = 0;
+    let comments = 0;
+    let shares = 0;
     
-    // Get basic metrics
-    const likes = postData.likes?.summary?.total_count || 0;
-    const comments = postData.comments?.summary?.total_count || 0;
-    const shares = postData.shares?.count || 0;
-    
-    // Try to get insights (reach/impressions) - this might fail if post is too new or missing permissions
-    let reach = 0;
     try {
-      const insightsResponse = await axios.get(
-        `https://graph.facebook.com/v19.0/${postId}/insights`,
+      // Fetch post metadata to determine type
+      const postMetaResponse = await axios.get(
+        `https://graph.facebook.com/v19.0/${postId}`,
         {
           params: {
-            metric: 'post_impressions',
+            fields: 'attachments{media_type,type},status_type,type,is_published',
             access_token: pageAccessToken
           }
         }
       );
+      const postMeta = postMetaResponse.data;
+      postType = postMeta.status_type || postMeta.type || 'unknown';
+      console.log(`[${reqId}] Post type detected: ${postType}`, {
+        status_type: postMeta.status_type,
+        type: postMeta.type,
+        is_published: postMeta.is_published,
+        media_type: postMeta.attachments?.data?.[0]?.media_type
+      });
+    } catch (metaError) {
+      console.warn(`[${reqId}] Could not detect post type:`, metaError.message);
+    }
+    
+    try {
+      // Try full request with summary first
+      console.log(`[${reqId}] Requesting basic stats: GET /${postId}?fields=shares,likes.summary(true),comments.summary(true)`);
+      const postResponse = await axios.get(
+        `https://graph.facebook.com/v19.0/${postId}`,
+        {
+          params: {
+            fields: 'shares,likes.summary(true),comments.summary(true)',
+            access_token: pageAccessToken
+          }
+        }
+      );
+      postData = postResponse.data;
+      likes = postData.likes?.summary?.total_count || postData.likes?.data?.length || 0;
+      comments = postData.comments?.summary?.total_count || postData.comments?.data?.length || 0;
+      shares = postData.shares?.count || 0;
+      console.log(`[${reqId}] Basic stats retrieved: likes=${likes}, comments=${comments}, shares=${shares}`);
+    } catch (basicError) {
+      // If summary fails, try without summary (for very new posts)
+      console.log(`[${reqId}] Summary request failed, trying basic fields`);
+      try {
+        console.log(`[${reqId}] Requesting basic stats: GET /${postId}?fields=shares,likes,comments`);
+        const postResponse = await axios.get(
+          `https://graph.facebook.com/v19.0/${postId}`,
+          {
+            params: {
+              fields: 'shares,likes,comments',
+              access_token: pageAccessToken
+            }
+          }
+        );
+        postData = postResponse.data;
+        // For basic fields, count the arrays
+        likes = postData.likes?.data?.length || 0;
+        comments = postData.comments?.data?.length || 0;
+        shares = postData.shares?.count || 0;
+        console.log(`[${reqId}] Basic stats retrieved: likes=${likes}, comments=${comments}, shares=${shares}`);
+      } catch (fallbackError) {
+        // If that also fails, try individual requests
+        console.log(`[${reqId}] Basic fields failed, trying individual requests`);
+        try {
+          const [likesRes, commentsRes, sharesRes] = await Promise.allSettled([
+            axios.get(`https://graph.facebook.com/v19.0/${postId}`, {
+              params: { fields: 'likes.summary(true)', access_token: pageAccessToken }
+            }),
+            axios.get(`https://graph.facebook.com/v19.0/${postId}`, {
+              params: { fields: 'comments.summary(true)', access_token: pageAccessToken }
+            }),
+            axios.get(`https://graph.facebook.com/v19.0/${postId}`, {
+              params: { fields: 'shares', access_token: pageAccessToken }
+            })
+          ]);
+          
+          if (likesRes.status === 'fulfilled') {
+            likes = likesRes.value.data.likes?.summary?.total_count || likesRes.value.data.likes?.data?.length || 0;
+          }
+          if (commentsRes.status === 'fulfilled') {
+            comments = commentsRes.value.data.comments?.summary?.total_count || commentsRes.value.data.comments?.data?.length || 0;
+          }
+          if (sharesRes.status === 'fulfilled') {
+            shares = sharesRes.value.data.shares?.count || 0;
+          }
+        } catch (individualError) {
+          // If all fail, it's likely a permission or post age issue
+          console.warn(`[${reqId}] All post stats requests failed. Post may be too new or permissions insufficient.`);
+          // Return zeros but don't throw - we'll still try insights
+          likes = 0;
+          comments = 0;
+          shares = 0;
+        }
+      }
+    }
+    
+    // Try to get insights (reach/impressions) - this might fail if post is too new or missing permissions
+    let reach = 0;
+    try {
+      // Select metrics based on post type
+      let metricsToTry = [];
       
-      if (insightsResponse.data?.data && insightsResponse.data.data.length > 0) {
-        const insight = insightsResponse.data.data[0];
-        // Insights can have different structures - check for values array
-        if (insight.values && insight.values.length > 0) {
-          reach = insight.values[0].value || 0;
-        } else if (insight.value !== undefined) {
-          reach = insight.value;
+      // Determine valid metrics based on post type
+      if (postType === 'video' || postType === 'video_autoplay') {
+        metricsToTry = ['post_video_views', 'post_impressions', 'post_reach'];
+      } else if (postType === 'photo' || postType === 'added_photos') {
+        metricsToTry = ['post_impressions', 'post_impressions_unique', 'post_reach', 'post_engaged_users'];
+      } else if (postType === 'link' || postType === 'shared_story') {
+        metricsToTry = ['post_impressions', 'post_reach', 'post_clicks'];
+      } else {
+        // Default: try common metrics for feed posts
+        metricsToTry = ['post_impressions', 'post_impressions_unique', 'post_reach', 'post_engaged_users'];
+      }
+      
+      console.log(`[${reqId}] Insights request: GET /${postId}/insights`, {
+        postId,
+        endpoint: `/${postId}/insights`,
+        metrics: metricsToTry,
+        postType,
+        tokenType: 'PAGE'
+      });
+      
+      for (const metric of metricsToTry) {
+        try {
+          console.log(`[${reqId}] Trying metric: ${metric}`);
+          const insightsResponse = await axios.get(
+            `https://graph.facebook.com/v19.0/${postId}/insights`,
+            {
+              params: {
+                metric: metric,
+                access_token: pageAccessToken
+              }
+            }
+          );
+          
+          if (insightsResponse.data?.data && insightsResponse.data.data.length > 0) {
+            const insight = insightsResponse.data.data[0];
+            // Insights can have different structures - check for values array
+            if (insight.values && insight.values.length > 0) {
+              reach = insight.values[0].value || 0;
+            } else if (insight.value !== undefined) {
+              reach = insight.value;
+            }
+            console.log(`[${reqId}] ✅ Successfully fetched ${metric}: ${reach}`);
+            break; // Success, stop trying other metrics
+          }
+        } catch (metricError) {
+          const errorCode = metricError.response?.data?.error?.code;
+          const errorType = metricError.response?.data?.error?.type;
+          const errorMessage = metricError.response?.data?.error?.message || metricError.message;
+          
+          // Categorize the error
+          if (errorMessage.includes('valid insights metric')) {
+            console.log(`[${reqId}] ❌ INVALID_METRIC: ${metric} - ${errorMessage}`);
+            continue; // Try next metric
+          } else if (errorCode === 200 && errorType === 'OAuthException') {
+            console.log(`[${reqId}] ❌ PERMISSION_DENIED: ${metric} - ${errorMessage}`);
+            throw metricError; // Re-throw permission errors - stop trying
+          } else if (errorCode === 10) {
+            console.log(`[${reqId}] ❌ MISSING_SCOPE_OR_FEATURE: ${metric} - ${errorMessage}`);
+            throw metricError; // Re-throw scope errors - stop trying
+          } else {
+            console.log(`[${reqId}] ⚠️  Other error for ${metric}: ${errorMessage} (code: ${errorCode})`);
+            // Continue to next metric for other errors
+            continue;
+          }
         }
       }
     } catch (insightsError) {
@@ -605,22 +744,20 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
       const errorType = insightsError.response?.data?.error?.type;
       const errorMessage = insightsError.response?.data?.error?.message || insightsError.message;
       
-      // Check if it's a permissions error for insights
+      // Categorize the final error
       if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
-        // Don't throw - just log and continue with reach = 0
-        // The read_insights permission requires App Review approval from Facebook
-        // For now, we'll return basic stats (likes, comments, shares) without reach
-        console.warn(`[Facebook] Insights permission missing for post ${postId}. The read_insights permission requires Facebook App Review approval. Basic stats (likes, comments, shares) are still available.`);
-        // Set reach to 0 and continue - don't fail the entire request
+        console.warn(`[${reqId}] PERMISSION_DENIED: Insights permission missing. The read_insights permission requires Facebook App Review approval. Basic stats (likes, comments, shares) are still available.`);
+        reach = 0;
+      } else if (errorCode === 10) {
+        console.warn(`[${reqId}] MISSING_SCOPE_OR_FEATURE: ${errorMessage}`);
         reach = 0;
       } else {
-        // Insights might not be available immediately after posting or for other reasons
-        // This is not a critical error, we'll just use 0 for reach
-        console.log(`[Facebook] Insights not available for post ${postId}:`, errorMessage);
+        console.log(`[${reqId}] Insights not available: ${errorMessage}`);
         reach = 0;
       }
     }
     
+    console.log(`[${reqId}] ✅ Analytics refresh complete: likes=${likes}, comments=${comments}, shares=${shares}, reach=${reach}`);
     return {
       likes,
       comments,
@@ -632,7 +769,7 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
     const errorCode = error.response?.data?.error?.code;
     const errorType = error.response?.data?.error?.type;
     
-    console.error(`[Facebook] Analytics error for post ${postId}:`, {
+    console.error(`[${reqId}] ❌ Analytics error:`, {
       message: errorMessage,
       code: errorCode,
       type: errorType,
