@@ -514,6 +514,23 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
     };
   }
 
+  // Debug: Check token permissions before making API call
+  try {
+    const debugResponse = await axios.get('https://graph.facebook.com/v19.0/debug_token', {
+      params: {
+        input_token: pageAccessToken,
+        access_token: `${process.env.FACEBOOK_CLIENT_ID}|${process.env.FACEBOOK_CLIENT_SECRET}`
+      }
+    });
+    const tokenData = debugResponse.data.data;
+    console.log(`[Facebook] Token Debug for post ${postId}:`);
+    console.log(`  - Scopes:`, tokenData?.scopes);
+    console.log(`  - Has read_insights:`, tokenData?.scopes?.includes('read_insights'));
+    console.log(`  - Has pages_read_engagement:`, tokenData?.scopes?.includes('pages_read_engagement'));
+  } catch (debugError) {
+    console.warn(`[Facebook] Could not debug token:`, debugError.message);
+  }
+
   try {
     // First, get basic post stats (likes, comments, shares)
     const postResponse = await axios.get(
