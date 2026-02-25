@@ -938,10 +938,44 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          // Use the full postId (with pageId prefix) for API call
-          console.log(`[Refresh Analytics] Fetching analytics for post: ${fullPostId} on page: ${pageId}`);
-          analytics = await getPostStats(pageId, fullPostId, selectedPage.access_token);
-          successes.push('Facebook');
+          // Debug: Check Page Access Token permissions
+          if (selectedPage && selectedPage.access_token) {
+            try {
+              const debugPageToken = await axios.get('https://graph.facebook.com/v19.0/debug_token', {
+                params: {
+                  input_token: selectedPage.access_token,
+                  access_token: `${process.env.FACEBOOK_CLIENT_ID}|${process.env.FACEBOOK_CLIENT_SECRET}`
+                }
+              });
+              console.log(`[Refresh Analytics] Page Token Scopes:`, debugPageToken.data.data?.scopes);
+              console.log(`[Refresh Analytics] Page Token Permissions:`, debugPageToken.data.data?.granular_scopes);
+            } catch (debugError) {
+              console.warn('[Refresh Analytics] Could not debug page token:', debugError.message);
+            }
+          }
+
+          // Try with Page Access Token first, fallback to User Access Token if it fails
+          try {
+            console.log(`[Refresh Analytics] Trying with Page Access Token for post: ${fullPostId}`);
+            analytics = await getPostStats(pageId, fullPostId, selectedPage.access_token);
+            successes.push('Facebook');
+          } catch (pageTokenError) {
+            // If Page Access Token fails with permission error, try User Access Token
+            if (pageTokenError.isPermissionError || (pageTokenError.message && pageTokenError.message.includes('Missing Permissions'))) {
+              console.log(`[Refresh Analytics] Page Access Token failed, trying User Access Token...`);
+              try {
+                analytics = await getPostStats(pageId, fullPostId, account.accessToken);
+                console.log(`[Refresh Analytics] Successfully used User Access Token as fallback`);
+                successes.push('Facebook');
+              } catch (userTokenError) {
+                // Both failed
+                throw pageTokenError; // Throw original error
+              }
+            } else {
+              // Not a permission error, throw it
+              throw pageTokenError;
+            }
+          }
 
         } else if (platformEntry.platform === 'linkedin') {
           // Get LinkedIn account
