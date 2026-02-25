@@ -954,27 +954,59 @@ export const refreshPostAnalytics = async (req, res) => {
             }
           }
 
-          // Try with Page Access Token first, fallback to User Access Token if it fails
+          // Use Page Access Token ONLY (no fallback to User Token for analytics)
+          // Page analytics endpoints require Page Access Tokens, not User Access Tokens
+          console.log(`[Refresh Analytics] Using Page Access Token for post: ${fullPostId} on page: ${pageId}`);
+          
+          // Validate Page Access Token before use
+          if (!selectedPage || !selectedPage.access_token) {
+            errors.push('Facebook: Page Access Token not found');
+            continue;
+          }
+
+          // Verify the page token is valid for this specific page with step-by-step validation
           try {
-            console.log(`[Refresh Analytics] Trying with Page Access Token for post: ${fullPostId}`);
+            // Test 1: Verify we can access the page
+            const pageTest = await axios.get(`https://graph.facebook.com/v19.0/${pageId}`, {
+              params: {
+                fields: 'id,name',
+                access_token: selectedPage.access_token
+              }
+            });
+            console.log(`[Refresh Analytics] Page token validated for page: ${pageTest.data.name} (${pageTest.data.id})`);
+
+            // Test 2: Verify we can access the post
+            const postTest = await axios.get(`https://graph.facebook.com/v19.0/${fullPostId}`, {
+              params: {
+                fields: 'id,created_time',
+                access_token: selectedPage.access_token
+              }
+            });
+            console.log(`[Refresh Analytics] Post accessible: ${postTest.data.id} (created: ${postTest.data.created_time})`);
+
+            // Test 3: Now try analytics
             analytics = await getPostStats(pageId, fullPostId, selectedPage.access_token);
             successes.push('Facebook');
-          } catch (pageTokenError) {
-            // If Page Access Token fails with permission error, try User Access Token
-            if (pageTokenError.isPermissionError || (pageTokenError.message && pageTokenError.message.includes('Missing Permissions'))) {
-              console.log(`[Refresh Analytics] Page Access Token failed, trying User Access Token...`);
-              try {
-                analytics = await getPostStats(pageId, fullPostId, account.accessToken);
-                console.log(`[Refresh Analytics] Successfully used User Access Token as fallback`);
-                successes.push('Facebook');
-              } catch (userTokenError) {
-                // Both failed
-                throw pageTokenError; // Throw original error
-              }
+          } catch (testError) {
+            const errorCode = testError.response?.data?.error?.code;
+            const errorMessage = testError.response?.data?.error?.message || testError.message;
+            
+            if (errorCode === 10 || errorCode === 200) {
+              // Permission/auth error
+              const detailedError = `Facebook: Page Access Token validation failed. ` +
+                `Error: ${errorMessage}. ` +
+                `Ensure the user has MODERATE task/role on Page ${pageId} and the token is fresh. ` +
+                `Try disconnecting and reconnecting your Facebook account.`;
+              errors.push(detailedError);
+              console.error(`[Refresh Analytics] ${detailedError}`);
+            } else if (errorCode === 100) {
+              // Post/page doesn't exist or not accessible
+              errors.push(`Facebook: Post ${fullPostId} not accessible. The post may be too new or the token doesn't have access.`);
             } else {
-              // Not a permission error, throw it
-              throw pageTokenError;
+              // Other error
+              errors.push(`Facebook: ${errorMessage}`);
             }
+            continue;
           }
 
         } else if (platformEntry.platform === 'linkedin') {

@@ -514,7 +514,7 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
     };
   }
 
-  // Debug: Check token permissions before making API call
+  // Debug: Check token permissions and validate it's a Page token
   try {
     const debugResponse = await axios.get('https://graph.facebook.com/v19.0/debug_token', {
       params: {
@@ -524,9 +524,37 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
     });
     const tokenData = debugResponse.data.data;
     console.log(`[Facebook] Token Debug for post ${postId}:`);
+    console.log(`  - Token Type: ${tokenData?.type || 'unknown'}`);
     console.log(`  - Scopes:`, tokenData?.scopes);
+    console.log(`  - Granular Scopes:`, tokenData?.granular_scopes);
+    
+    // Check if this is actually a Page token
+    if (tokenData?.type !== 'PAGE') {
+      console.warn(`[Facebook] WARNING: Token type is ${tokenData?.type}, expected PAGE token for analytics`);
+    }
+    
+    // Check page-specific permissions
+    const hasReadEngagement = tokenData?.scopes?.includes('pages_read_engagement');
+    let hasReadEngagementForPage = false;
+    
+    if (tokenData?.granular_scopes) {
+      const readEngagementScope = tokenData.granular_scopes.find(
+        gs => gs.scope === 'pages_read_engagement'
+      );
+      if (readEngagementScope && readEngagementScope.target_ids) {
+        hasReadEngagementForPage = readEngagementScope.target_ids.includes(pageId);
+        console.log(`  - pages_read_engagement for page ${pageId}:`, hasReadEngagementForPage);
+        console.log(`  - pages_read_engagement target_ids:`, readEngagementScope.target_ids);
+      }
+    }
+    
     console.log(`  - Has read_insights:`, tokenData?.scopes?.includes('read_insights'));
-    console.log(`  - Has pages_read_engagement:`, tokenData?.scopes?.includes('pages_read_engagement'));
+    console.log(`  - Has pages_read_engagement (general):`, hasReadEngagement);
+    console.log(`  - Has pages_read_engagement (for this page):`, hasReadEngagementForPage);
+    
+    if (!hasReadEngagementForPage && pageId) {
+      console.warn(`[Facebook] WARNING: pages_read_engagement not found for page ${pageId} in granular_scopes`);
+    }
   } catch (debugError) {
     console.warn(`[Facebook] Could not debug token:`, debugError.message);
   }
@@ -611,18 +639,33 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
       fullError: error.response?.data
     });
     
-    // Check if it's a permissions error
-    if (errorCode === 200 && errorType === 'OAuthException') {
-      if (errorMessage.includes('Missing Permissions')) {
-        // Permission error - user needs to reconnect or app needs App Review
-        const permissionError = new Error('Missing required Facebook permissions. Please disconnect and reconnect your Facebook account to grant the necessary permissions. If you are an Administrator/Developer, the permissions should work in Development Mode. For production, you may need to submit App Review for read_insights permission.');
+    // Check if it's a permissions/auth error (both code 200 and 10)
+    if ((errorCode === 200 || errorCode === 10) && errorType === 'OAuthException') {
+      if (errorMessage.includes('pages_read_engagement') || 
+          errorMessage.includes('Missing Permissions') ||
+          errorMessage.includes('requires the')) {
+        
+        // Provide specific guidance based on error
+        let guidance = '';
+        if (errorMessage.includes('Page Public Content Access')) {
+          guidance = 'Enable "Page Public Content Access" feature in Facebook App Dashboard → Settings → Advanced. ';
+        }
+        if (errorMessage.includes('MODERATE') || errorMessage.includes('task')) {
+          guidance += 'Ensure the user has MODERATE task/role on the Page. ';
+        }
+        guidance += 'Try disconnecting and reconnecting your Facebook account to refresh tokens.';
+        
+        const permissionError = new Error(
+          `Facebook Page Access Token missing required permissions: ${errorMessage}. ${guidance}`
+        );
         permissionError.isPermissionError = true;
-        permissionError.requiresAppReview = errorMessage.includes('read_insights') || errorMessage.includes('insights');
+        permissionError.requiresAppReview = errorMessage.includes('read_insights') || 
+                                           errorMessage.includes('insights') ||
+                                           errorMessage.includes('App Review');
         throw permissionError;
       } else if (errorMessage.includes('does not exist') || errorMessage.includes('cannot be loaded')) {
         // Post might not exist yet or token doesn't have access
-        // This can happen if post was just published or token is invalid
-        throw new Error(`Facebook post not accessible: ${errorMessage}. The post may be too new, or your access token may need to be refreshed. Try disconnecting and reconnecting your Facebook account.`);
+        throw new Error(`Facebook post not accessible: ${errorMessage}. The post may be too new (analytics may not be available immediately after publishing), or your access token may need to be refreshed. Try disconnecting and reconnecting your Facebook account.`);
       }
     }
     
