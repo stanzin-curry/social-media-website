@@ -594,13 +594,24 @@ export const getPostStats = async (pageId, postId, pageAccessToken) => {
       fullError: error.response?.data
     });
     
-    // Check if it's a permissions error for basic stats (likes, comments, shares)
-    // This is more critical than insights permission
-    if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
-      const permissionError = new Error('Missing required Facebook permissions. The read_insights permission requires Facebook App Review approval. Please check your Facebook App settings and ensure the app has the necessary permissions approved.');
-      permissionError.isPermissionError = true;
-      permissionError.requiresAppReview = true;
-      throw permissionError;
+    // Check if it's a permissions error
+    if (errorCode === 200 && errorType === 'OAuthException') {
+      if (errorMessage.includes('Missing Permissions')) {
+        // Permission error - user needs to reconnect or app needs App Review
+        const permissionError = new Error('Missing required Facebook permissions. Please disconnect and reconnect your Facebook account to grant the necessary permissions. If you are an Administrator/Developer, the permissions should work in Development Mode. For production, you may need to submit App Review for read_insights permission.');
+        permissionError.isPermissionError = true;
+        permissionError.requiresAppReview = errorMessage.includes('read_insights') || errorMessage.includes('insights');
+        throw permissionError;
+      } else if (errorMessage.includes('does not exist') || errorMessage.includes('cannot be loaded')) {
+        // Post might not exist yet or token doesn't have access
+        // This can happen if post was just published or token is invalid
+        throw new Error(`Facebook post not accessible: ${errorMessage}. The post may be too new, or your access token may need to be refreshed. Try disconnecting and reconnecting your Facebook account.`);
+      }
+    }
+    
+    // For other errors, check if it's a post access issue
+    if (errorCode === 100 || errorMessage.includes('does not exist') || errorMessage.includes('cannot be loaded')) {
+      throw new Error(`Facebook post not accessible: ${errorMessage}. The post may be too new (analytics may not be available immediately after publishing), or your access token may need to be refreshed.`);
     }
     
     throw new Error(`Facebook analytics error: ${errorMessage}`);
