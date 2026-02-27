@@ -839,10 +839,12 @@ export const refreshPostAnalytics = async (req, res) => {
 
     // Initialize analytics object (will aggregate or use first platform's data)
     let aggregatedAnalytics = {
-      likes: 0,
+      likes: 0, // Backward compatibility - maps from reactionsCount
       comments: 0,
       reach: 0,
-      shares: 0
+      shares: 0,
+      impressionsUnique: 0,
+      engagedUsers: 0
     };
 
     const errors = [];
@@ -1070,10 +1072,27 @@ export const refreshPostAnalytics = async (req, res) => {
 
         // Aggregate analytics (for multi-platform posts, sum the metrics)
         if (analytics) {
-          aggregatedAnalytics.likes += analytics.likes || 0;
-          aggregatedAnalytics.comments += analytics.comments || 0;
-          aggregatedAnalytics.reach += analytics.reach || 0;
-          aggregatedAnalytics.shares += analytics.shares || 0;
+          // Map new field names (reactionsCount) to legacy field names (likes) for backward compatibility
+          // Facebook now returns reactionsCount, but model still uses likes
+          const reactions = analytics.reactionsCount ?? analytics.likes ?? 0;
+          const comments = analytics.commentsCount ?? analytics.comments ?? 0;
+          const shares = analytics.sharesCount ?? analytics.shares ?? 0;
+          const reach = analytics.reach ?? 0;
+          const impressionsUnique = analytics.impressionsUnique ?? 0;
+          const engagedUsers = analytics.engagedUsers ?? 0;
+          
+          aggregatedAnalytics.likes += reactions; // Map reactionsCount to likes for backward compatibility
+          aggregatedAnalytics.comments += comments;
+          aggregatedAnalytics.reach += reach;
+          aggregatedAnalytics.shares += shares;
+          
+          // Store new metrics if available
+          if (impressionsUnique > 0) {
+            aggregatedAnalytics.impressionsUnique = (aggregatedAnalytics.impressionsUnique || 0) + impressionsUnique;
+          }
+          if (engagedUsers > 0) {
+            aggregatedAnalytics.engagedUsers = (aggregatedAnalytics.engagedUsers || 0) + engagedUsers;
+          }
         }
 
       } catch (platformError) {

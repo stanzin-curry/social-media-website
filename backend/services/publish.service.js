@@ -59,6 +59,20 @@ export const publishPost = async (post) => {
     for (const pageId of pagesToPost) {
       try {
         const pageIdentifier = pageId || (platform === 'linkedin' ? 'personal profile' : 'default page');
+        
+        // Check if already published to this platform/page to avoid duplicates
+        const existingPublish = post.publishedPlatforms?.find(
+          pp => pp.platform === platform && 
+                pp.status === 'success' && 
+                pp.platformPostId &&
+                (pageId ? pp.pageId === pageId : true) // Match pageId if specified
+        );
+        
+        if (existingPublish) {
+          console.log(`[Scheduler] ⏭️  Post ${post._id} already published to ${platform}${pageId ? ` (page: ${pageId})` : ''} with ID ${existingPublish.platformPostId}, skipping duplicate`);
+          continue;
+        }
+        
         console.log(`[Scheduler] Publishing to ${platform} - ${pageIdentifier}...`);
 
         // Construct full media URL if media exists
