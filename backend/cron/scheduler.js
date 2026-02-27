@@ -21,8 +21,44 @@ const checkScheduledPosts = async () => {
 
     for (const post of postsToPublish) {
       try {
+        // Atomic claim: Update status to 'publishing' only if currently 'scheduled'
+        // This prevents duplicate publishes if scheduler runs multiple times
+        const updateResult = await Post.updateOne(
+          { _id: post._id, status: 'scheduled' },
+          { $set: { status: 'publishing' } }
+        );
+        
+        // If no document was updated, it means another scheduler instance already claimed it
+        if (updateResult.modifiedCount === 0) {
+          console.log(`[Scheduler] ⏭️  Post ${post._id} already being published or not in scheduled status, skipping`);
+          continue;
+        }
+        
         console.log(`[Scheduler] Publishing post ${post._id}...`);
-        const result = await publishPost(post);
+        
+        // Reload post to get fresh data after status update
+        const freshPost = await Post.findById(post._id);
+        if (!freshPost) {
+          console.error(`[Scheduler] ❌ Post ${post._id} not found after claim`);
+          continue;
+        }
+        
+        // Check if already published to avoid duplicate
+        const hasSuccessfulPublish = freshPost.publishedPlatforms?.some(
+          pp => pp.status === 'success' && pp.platformPostId
+        );
+        
+        if (hasSuccessfulPublish) {
+          console.log(`[Scheduler] ⏭️  Post ${post._id} already has successful publishes, skipping to avoid duplicate`);
+          // Reset status back to published if it was already published
+          await Post.updateOne(
+            { _id: post._id },
+            { $set: { status: 'published' } }
+          );
+          continue;
+        }
+        
+        const result = await publishPost(freshPost);
         
         if (result.success) {
           console.log(`[Scheduler] ✅ Post ${post._id} published successfully`);
@@ -31,8 +67,11 @@ const checkScheduledPosts = async () => {
         }
       } catch (error) {
         console.error(`[Scheduler] Error publishing post ${post._id}:`, error.message);
-        post.status = 'failed';
-        await post.save();
+        // Reset status on error
+        await Post.updateOne(
+          { _id: post._id },
+          { $set: { status: 'failed' } }
+        );
         
         // Create notification for failed post if user has preference enabled
         try {
