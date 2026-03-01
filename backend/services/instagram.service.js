@@ -3,6 +3,15 @@ import fs from 'fs';
 import path from 'path';
 
 /**
+ * Instagram Graph API (via graph.facebook.com).
+ *
+ * Required permissions:
+ * - instagram_basic: read profile, media list, basic media fields (like_count, comments_count).
+ * - instagram_content_publish: publish media (create container, publish).
+ * - read_insights (optional): for GET /{ig-media-id}/insights (reach, impressions); often requires App Review.
+ */
+
+/**
  * Helper function to process a single media URL (convert localhost to public URL)
  */
 const processMediaUrl = (mediaUrl) => {
@@ -263,9 +272,12 @@ export const getInstagramAccountInfo = async (accessToken, instagramAccountId) =
 };
 
 /**
- * Get Instagram post analytics/insights
- * @param {string} mediaId - Instagram Media ID
- * @param {string} accessToken - Instagram access token (Page access token)
+ * Get Instagram post analytics/insights.
+ * Uses the correct IG endpoints (not FB post ID):
+ * - GET /{ig-media-id}?fields=like_count,comments_count
+ * - GET /{ig-media-id}/insights?metric=impressions,reach
+ * @param {string} mediaId - Instagram Media ID (from platformPostId; must be IG media id, not Facebook post id)
+ * @param {string} accessToken - Page access token for the Facebook Page that owns this IG Business Account
  * @returns {Promise<Object>} Analytics data with likes, comments, reach, shares
  */
 export const getInstagramPostStats = async (mediaId, accessToken) => {
@@ -355,23 +367,38 @@ export const getInstagramPostStats = async (mediaId, accessToken) => {
     const errorMessage = error.response?.data?.error?.message || error.message;
     const errorCode = error.response?.data?.error?.code;
     const errorType = error.response?.data?.error?.type;
-    
+    const httpStatus = error.response?.status;
+
     console.error(`[Instagram] Analytics error for post ${mediaId}:`, {
       message: errorMessage,
       code: errorCode,
       type: errorType,
       fullError: error.response?.data
     });
-    
-    // Check if it's a permissions error for basic stats
+
+    // Map Graph API errors to HTTP status so the backend can return 401/403/404/429 instead of 500
+    let statusToReturn = 500;
+    if (errorCode === 190 || errorCode === 102 || (httpStatus === 401)) {
+      statusToReturn = 401; // Token expired, invalid, or not authorized
+    } else if (errorCode === 200 && errorType === 'OAuthException') {
+      statusToReturn = 403; // Permissions (e.g. Missing Permissions, not allowed)
+    } else if (errorCode === 100 || (httpStatus === 404)) {
+      statusToReturn = 404; // Media not found / not owned / invalid parameter
+    } else if (errorCode === 4 || errorCode === 17 || (httpStatus === 429)) {
+      statusToReturn = 429; // Rate limited
+    }
+
     if (errorCode === 200 && errorType === 'OAuthException' && errorMessage.includes('Missing Permissions')) {
       const permissionError = new Error('Missing required Instagram permissions. The read_insights permission requires Facebook App Review approval. Please check your Facebook App settings and ensure the permission is approved.');
       permissionError.isPermissionError = true;
       permissionError.requiresAppReview = true;
+      permissionError.httpStatus = 403;
       throw permissionError;
     }
-    
-    throw new Error(`Instagram analytics error: ${errorMessage}`);
+
+    const err = new Error(`Instagram analytics error: ${errorMessage}`);
+    err.httpStatus = statusToReturn;
+    throw err;
   }
 };
 
