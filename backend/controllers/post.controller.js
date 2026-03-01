@@ -849,13 +849,22 @@ export const refreshPostAnalytics = async (req, res) => {
 
     const errors = [];
     const successes = [];
+    /** When all platforms fail, use this status instead of always 500 (from Graph API 401/403/404/429). */
+    let suggestedErrorStatus = 500;
 
     // Process each platform
     for (const platformEntry of platformsToRefresh) {
       try {
         let analytics = null;
 
-        if (platformEntry.platform === 'facebook') {
+        // Normalize legacy: prefer facebookPageId / instagramAccountId; pageId was overloaded (FB page for Facebook, IG Business ID for Instagram)
+        const entry = {
+          ...platformEntry,
+          facebookPageId: platformEntry.facebookPageId ?? (platformEntry.platform === 'facebook' ? platformEntry.pageId : undefined),
+          instagramAccountId: platformEntry.instagramAccountId ?? (platformEntry.platform === 'instagram' ? platformEntry.pageId : undefined)
+        };
+
+        if (entry.platform === 'facebook') {
           // Get Facebook account
           const account = await Account.findOne({
             user: userId,
@@ -881,14 +890,14 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          // Determine pageId and postId
+          // Determine pageId and postId (Facebook: use facebookPageId or legacy pageId)
           let pageId;
-          let postIdOnly = platformEntry.platformPostId.trim();
+          let postIdOnly = entry.platformPostId.trim();
           let fullPostId = postIdOnly;
 
-          // Strategy 1: Use stored pageId if available
-          if (platformEntry.pageId) {
-            pageId = platformEntry.pageId;
+          // Strategy 1: Use stored facebookPageId / pageId if available
+          if (entry.facebookPageId || entry.pageId) {
+            pageId = entry.facebookPageId || entry.pageId;
             // Ensure postId has the correct format: {pageId}_{postId}
             if (!postIdOnly.includes('_')) {
               // PostId doesn't have pageId prefix, add it
@@ -1024,10 +1033,10 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          analytics = await getLinkedInPostStats(platformEntry.platformPostId, account.accessToken);
+          analytics = await getLinkedInPostStats(entry.platformPostId, account.accessToken);
           successes.push('LinkedIn');
 
-        } else if (platformEntry.platform === 'instagram') {
+        } else if (entry.platform === 'instagram') {
           // Get Facebook account (Instagram uses Facebook OAuth)
           const account = await Account.findOne({
             user: userId,
@@ -1040,21 +1049,16 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          // Get Instagram account ID from the post or account
-          // For now, we'll need to find the Instagram account ID
-          // This might need to be stored in publishedPlatforms or retrieved from account
-          const instagramAccountId = platformEntry.instagramAccountId || account.pages?.[0]?.instagramAccount?.id;
-
+          const instagramAccountId = entry.instagramAccountId || account.pages?.[0]?.instagramAccount?.id;
           if (!instagramAccountId) {
             errors.push('Instagram: Instagram account ID not found');
             continue;
           }
 
-          // Fetch pages to get page access token (needed for Instagram)
           const pagesResponse = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
             params: {
               access_token: account.accessToken,
-              fields: 'id,access_token'
+              fields: 'id,access_token,instagram_business_account'
             }
           });
 
@@ -1063,10 +1067,23 @@ export const refreshPostAnalytics = async (req, res) => {
             continue;
           }
 
-          // Use the first page's access token (or find the one connected to Instagram)
-          const pageAccessToken = pagesResponse.data.data[0].access_token;
+          // Prefer stored facebookPageId (the FB Page that owns this IG account); else find by instagram_business_account.id
+          let selectedPage = null;
+          if (entry.facebookPageId) {
+            selectedPage = pagesResponse.data.data.find(p => p.id === entry.facebookPageId);
+          }
+          if (!selectedPage) {
+            selectedPage = pagesResponse.data.data.find(
+              p => p.instagram_business_account && p.instagram_business_account.id === instagramAccountId
+            );
+          }
+          if (!selectedPage) {
+            selectedPage = pagesResponse.data.data[0];
+            console.warn(`[Refresh Analytics] Instagram account ${instagramAccountId} / facebookPageId ${entry.facebookPageId || 'none'} not matched; using first page token.`);
+          }
 
-          analytics = await getInstagramPostStats(platformEntry.platformPostId, pageAccessToken);
+          const pageAccessToken = selectedPage.access_token;
+          analytics = await getInstagramPostStats(entry.platformPostId, pageAccessToken);
           successes.push('Instagram');
         }
 
@@ -1096,18 +1113,19 @@ export const refreshPostAnalytics = async (req, res) => {
         }
 
       } catch (platformError) {
+        if (platformError.httpStatus) suggestedErrorStatus = platformError.httpStatus;
         // Handle LinkedIn API limitations gracefully
         if (platformError.linkedinApiLimitation) {
-          const errorMsg = `${platformEntry.platform}: ${platformError.message}`;
+          const errorMsg = `${entry.platform}: ${platformError.message}`;
           errors.push(errorMsg);
-          console.warn(`[Refresh Analytics] LinkedIn API limitation for ${platformEntry.platform}:`, platformError.message);
+          console.warn(`[Refresh Analytics] LinkedIn API limitation for ${entry.platform}:`, platformError.message);
           // Don't treat LinkedIn limitations as critical - continue with other platforms
         } else {
-          const errorMsg = platformError.isPermissionError 
-            ? `${platformEntry.platform}: ${platformError.message}`
-            : `${platformEntry.platform}: ${platformError.message || 'Failed to fetch analytics'}`;
+          const errorMsg = platformError.isPermissionError
+            ? `${entry.platform}: ${platformError.message}`
+            : `${entry.platform}: ${platformError.message || 'Failed to fetch analytics'}`;
           errors.push(errorMsg);
-          console.error(`[Refresh Analytics] Error for ${platformEntry.platform}:`, platformError);
+          console.error(`[Refresh Analytics] Error for ${entry.platform}:`, platformError);
         }
       }
     }
@@ -1131,11 +1149,11 @@ export const refreshPostAnalytics = async (req, res) => {
         warnings: errors
       });
     } else {
-      // All platforms failed
+      // All platforms failed: map to 401/403/404/429 when set by platform (e.g. Graph API), else 403 if permission-like, else 500
       const firstError = errors[0] || 'Failed to refresh analytics';
       const isPermissionError = errors.some(e => e.includes('permission') || e.includes('Permission'));
-      
-      return res.status(isPermissionError ? 403 : 500).json({
+      const status = suggestedErrorStatus !== 500 ? suggestedErrorStatus : (isPermissionError ? 403 : 500);
+      return res.status(status).json({
         success: false,
         message: firstError,
         errors: errors
@@ -1148,27 +1166,23 @@ export const refreshPostAnalytics = async (req, res) => {
       userId: req.user._id,
       error: error.message,
       isPermissionError: error.isPermissionError,
+      httpStatus: error.httpStatus,
       stack: error.stack
     });
-    
-    // Handle permission errors specifically
+
     if (error.isPermissionError) {
       let message = error.message || 'Missing required permissions.';
-      
       if (error.requiresAppReview) {
         message += ' Some permissions require App Review approval. Please check your app settings.';
       } else {
         message += ' Please disconnect and reconnect your account to grant the required permissions.';
       }
-      
-      return res.status(403).json({
-        success: false,
-        message: message
-      });
+      return res.status(403).json({ success: false, message });
     }
-    
-    // Handle other errors
-    res.status(500).json({
+
+    // Map Graph/API errors to proper status (401/403/404/429) so we don't surface everything as 500
+    const status = error.httpStatus && [401, 403, 404, 429].includes(error.httpStatus) ? error.httpStatus : 500;
+    return res.status(status).json({
       success: false,
       message: error.message || 'Failed to refresh analytics'
     });

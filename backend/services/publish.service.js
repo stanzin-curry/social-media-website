@@ -61,12 +61,12 @@ export const publishPost = async (post) => {
         const pageIdentifier = pageId || (platform === 'linkedin' ? 'personal profile' : 'default page');
         
         // Check if already published to this platform/page to avoid duplicates
-        const existingPublish = post.publishedPlatforms?.find(
-          pp => pp.platform === platform && 
-                pp.status === 'success' && 
-                pp.platformPostId &&
-                (pageId ? pp.pageId === pageId : true) // Match pageId if specified
-        );
+        const existingPublish = post.publishedPlatforms?.find(pp => {
+          if (pp.platform !== platform || pp.status !== 'success' || !pp.platformPostId) return false;
+          if (!pageId) return true;
+          if (platform === 'instagram') return (pp.instagramAccountId === pageId) || (pp.pageId === pageId); // pageId here is selected IG account id
+          return pp.pageId === pageId || pp.facebookPageId === pageId;
+        });
         
         if (existingPublish) {
           console.log(`[Scheduler] ⏭️  Post ${post._id} already published to ${platform}${pageId ? ` (page: ${pageId})` : ''} with ID ${existingPublish.platformPostId}, skipping duplicate`);
@@ -101,6 +101,10 @@ export const publishPost = async (post) => {
         let publishResult;
         let actualPageId = null;
         let pageName = pageIdentifier;
+        /** Set when publishing to Instagram: the FB Page that owns the IG account (for token lookup on refresh). */
+        let facebookPageIdForEntry = null;
+        /** Set when publishing to Instagram: the IG Business Account ID. */
+        let instagramAccountIdForEntry = null;
 
         switch (platform) {
           case 'facebook':
@@ -190,6 +194,8 @@ export const publishPost = async (post) => {
 
               pageName = `@${pageWithInstagram.instagramAccount.username}`;
               actualPageId = pageWithInstagram.instagramAccount.id;
+              facebookPageIdForEntry = pageWithInstagram.id;
+              instagramAccountIdForEntry = pageWithInstagram.instagramAccount.id;
 
               // Use the page's access token (required for Instagram API)
               // Pass mediaUrls array if multiple images, otherwise single mediaUrl
@@ -210,6 +216,7 @@ export const publishPost = async (post) => {
               }
             } else {
               // Use default Instagram account
+              instagramAccountIdForEntry = account.platformUserId;
               // Pass mediaUrls array if multiple images, otherwise single mediaUrl
               if (mediaUrls.length > 1) {
                 publishResult = await publishToInstagram(
@@ -348,14 +355,24 @@ export const publishPost = async (post) => {
           ...publishResult
         });
 
-        // Update post with published platform info
-        post.publishedPlatforms.push({
+        // Update post with published platform info (use facebookPageId/instagramAccountId; pageId kept for legacy)
+        const publishedEntry = {
           platform,
           platformPostId: publishResult.postId,
-          pageId: actualPageId || null,
           publishedAt: new Date(),
           status: 'success'
-        });
+        };
+        if (platform === 'facebook') {
+          publishedEntry.pageId = actualPageId;
+          publishedEntry.facebookPageId = actualPageId;
+        } else if (platform === 'instagram') {
+          publishedEntry.facebookPageId = facebookPageIdForEntry || undefined;
+          publishedEntry.instagramAccountId = instagramAccountIdForEntry || undefined;
+          publishedEntry.pageId = facebookPageIdForEntry || actualPageId || undefined;
+        } else if (platform === 'linkedin') {
+          publishedEntry.pageId = actualPageId;
+        }
+        post.publishedPlatforms.push(publishedEntry);
 
       } catch (error) {
         const pageIdentifier = pageId || (platform === 'linkedin' ? 'personal profile' : 'default page');
