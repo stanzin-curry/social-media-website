@@ -43,12 +43,7 @@ const postSchema = new mongoose.Schema({
       enum: ['instagram', 'facebook', 'linkedin']
     },
     platformPostId: String,
-    /** @deprecated Prefer facebookPageId / instagramAccountId. Legacy: Facebook Page ID for FB posts; was also (incorrectly) used for IG Business ID on Instagram — normalize in code. */
-    pageId: String,
-    /** Facebook Page ID. Use for FB posts and for Instagram (the Page that owns the IG Business Account). */
-    facebookPageId: String,
-    /** Instagram Business Account ID. Only set when platform is instagram. */
-    instagramAccountId: String,
+    pageId: String, // Facebook Page ID (for Facebook posts)
     publishedAt: Date,
     status: {
       type: String,
