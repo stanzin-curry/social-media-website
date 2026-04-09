@@ -30,7 +30,7 @@
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React 18** - Modern UI library with hooks and context API
+- **React 19** - Modern UI library with hooks and context API
 - **Vite** - Lightning-fast build tool and dev server
 - **Tailwind CSS** - Utility-first CSS framework for rapid UI development
 - **React Icons** - Comprehensive icon library for beautiful interfaces
